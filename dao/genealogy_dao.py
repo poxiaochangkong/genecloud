@@ -5,8 +5,16 @@
 
 
 def find_genealogies_by_user(conn, user_id):
-    """查找用户创建的或参与协作的族谱"""
+    """查找用户可见的族谱：管理员看所有，普通用户看创建的或参与协作的"""
     cursor = conn.cursor(dictionary=True)
+    # 检查是否是管理员
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    if user and user['is_admin']:
+        # 管理员可以看到所有族谱
+        cursor.execute("SELECT g.* FROM genealogies g")
+        return cursor.fetchall()
+
     cursor.execute("""
         SELECT g.* FROM genealogies g
         WHERE g.created_by = %s

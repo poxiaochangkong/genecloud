@@ -31,8 +31,10 @@ def index():
 
 @app.route('/genealogies')
 def genealogies_page():
-    """族谱列表页"""
-    return render_template('genealogy_list.html')
+    """族谱列表页（需要登录）"""
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    return render_template('dashboard.html')
 
 
 @app.route('/genealogies/<int:genealogy_id>')

@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% block title %}族谱详情{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 id="genealogy-title">族谱详情</h2>
+    <a href="/genealogies" class="btn btn-outline-secondary">返回</a>
+</div>
+
+<!-- 搜索栏 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="input-group">
+            <input type="text" class="form-control" id="search-keyword" placeholder="输入姓名搜索...">
+            <button class="btn btn-outline-primary" onclick="doSearch()">搜索</button>
+            <button class="btn btn-outline-secondary" onclick="loadMembers()">全部</button>
+        </div>
+    </div>
+</div>
+
+<!-- 添加成员表单 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>添加成员</h5>
+        <div class="row g-2">
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="m-name" placeholder="姓名">
+            </div>
+            <div class="col-md-1">
+                <select class="form-select" id="m-gender">
+                    <option value="M">男</option>
+                    <option value="F">女</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" id="m-birth" placeholder="出生年">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" id="m-death" placeholder="死亡年">
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="m-bio" placeholder="简介">
+            </div>
+            <div class="col-md-1">
+                <button class="btn btn-success" onclick="addMember()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 成员列表 -->
+<div id="member-list"></div>
+
+<!-- 关系操作 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>建立亲子关系</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="link-child" placeholder="子女ID">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="link-parent" placeholder="父母ID">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="link-type">
+                    <option value="father">父亲</option>
+                    <option value="mother">母亲</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-warning" onclick="addLink()">建立关系</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 查询祖先 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>查询祖先/后代</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="query-ancestor-id" placeholder="成员ID">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-info" onclick="queryAncestors()">查询祖先</button>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-info" onclick="queryDescendants()">查询后代</button>
+            </div>
+        </div>
+        <div id="ancestor-result" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- 查询亲缘关系 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>查询亲缘关系</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="kinship-a" placeholder="成员A的ID">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="kinship-b" placeholder="成员B的ID">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-danger" onclick="queryKinship()">查询</button>
+            </div>
+        </div>
+        <div id="kinship-result" class="mt-3"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const GENEALOGY_ID = {{ genealogy_id }};
+    checkLogin();
+    loadMembers();
+
+    async function loadMembers() {
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members`);
+        renderMembers(data);
+    }
+
+    async function doSearch() {
+        const keyword = document.getElementById('search-keyword').value;
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members/search?keyword=${keyword}`);
+        renderMembers(data);
+    }
+
+    function renderMembers(members) {
+        const container = document.getElementById('member-list');
+        if (!Array.isArray(members) || members.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无成员。</p>';
+            return;
+        }
+        container.innerHTML = '<table class="table table-striped"><thead><tr>'
+            + '<th>ID</th><th>姓名</th><th>性别</th><th>出生年</th><th>死亡年</th><th>操作</th>'
+            + '</tr></thead><tbody>' + members.map(m => `
+            <tr>
+                <td>${m.member_id}</td>
+                <td>${m.name}</td>
+                <td>${m.gender === 'M' ? '男' : '女'}</td>
+                <td>${m.birth_year || '-'}</td>
+                <td>${m.death_year || '在世'}</td>
+                <td>
+                    <a href="/members/${m.member_id}"
+                       class="btn btn-sm btn-outline-primary">详情</a>
+                </td>
+            </tr>
+        `).join('') + '</tbody></table>';
+    }
+
+    async function addMember() {
+        const data = {
+            name: document.getElementById('m-name').value,
+            gender: document.getElementById('m-gender').value,
+            birth_year: parseInt(document.getElementById('m-birth').value) || null,
+            death_year: parseInt(document.getElementById('m-death').value) || null,
+            bio: document.getElementById('m-bio').value,
+        };
+        const result = await api(`/api/genealogies/${GENEALOGY_ID}/members`, 'POST', data);
+        if (result.error) { alert(result.error); return; }
+        loadMembers();
+    }
+
+    async function addLink() {
+        const data = {
+            child_id: parseInt(document.getElementById('link-child').value),
+            parent_id: parseInt(document.getElementById('link-parent').value),
+            relation_type: document.getElementById('link-type').value,
+        };
+        const result = await api('/api/relations/link', 'POST', data);
+        if (result.error) { alert(result.error); return; }
+        alert('关系建立成功');
+    }
+
+    async function queryAncestors() {
+        const id = document.getElementById('query-ancestor-id').value;
+        const data = await api(`/api/members/${id}/ancestors`);
+        renderTree(data, 'ancestor-result', '祖先');
+    }
+
+    async function queryDescendants() {
+        const id = document.getElementById('query-ancestor-id').value;
+        const data = await api(`/api/members/${id}/descendants`);
+        renderTree(data, 'ancestor-result', '后代');
+    }
+
+    function renderTree(data, containerId, label) {
+        const container = document.getElementById(containerId);
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">无数据</p>';
+            return;
+        }
+        let html = '<h6>' + label + '列表：</h6><ul>';
+        data.forEach(m => {
+            const indent = '  '.repeat((m.generation || 1) - 1);
+            html += `<li>${indent}[第${m.generation}代] ${m.name}
+                     (${m.gender === 'M' ? '男' : '女'}, ${m.birth_year || '?'})</li>`;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+    }
+
+    async function queryKinship() {
+        const a = document.getElementById('kinship-a').value;
+        const b = document.getElementById('kinship-b').value;
+        const data = await api(`/api/relations/kinship?member_a=${a}&member_b=${b}`);
+        const container = document.getElementById('kinship-result');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        container.innerHTML = `
+            <div class="alert alert-success">
+                <strong>最近共同祖先：</strong>${data.common_ancestor} (ID: ${data.common_ancestor_id})<br>
+                <strong>A到祖先的距离：</strong>${data.path_a.length} 代<br>
+                <strong>B到祖先的距离：</strong>${data.path_b.length} 代<br>
+                <strong>完整链路：</strong>
+                ${data.path_a.map(p => p.name).join(' → ')}
+                ← ${data.common_ancestor} →
+                ${data.path_b.map(p => p.name).reverse().join(' → ')}
+            </div>`;
+    }
+</script>
+{% endblock %}

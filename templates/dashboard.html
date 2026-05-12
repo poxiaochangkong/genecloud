@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - 寻根溯源{% endblock %}
+{% block content %}
+<h2>我的族谱</h2>
+
+<!-- 创建族谱表单 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5>创建新族谱</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control" id="new-name" placeholder="族谱名称">
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" id="new-surname" placeholder="姓氏">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary" onclick="createGenealogy()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 族谱列表 -->
+<div id="genealogy-list"></div>
+
+<!-- 统计面板 -->
+<div id="stats-panel" class="card" style="display:none;">
+    <div class="card-body">
+        <h5 id="stats-title"></h5>
+        <div class="row">
+            <div class="col-md-3"><strong>总人数：</strong><span id="stat-total"></span></div>
+            <div class="col-md-3"><strong>男性：</strong><span id="stat-male"></span></div>
+            <div class="col-md-3"><strong>女性：</strong><span id="stat-female"></span></div>
+            <div class="col-md-3"><strong>平均寿命：</strong><span id="stat-lifespan"></span></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    checkLogin();
+    loadGenealogies();
+
+    async function loadGenealogies() {
+        const data = await api('/api/genealogies');
+        const container = document.getElementById('genealogy-list');
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无族谱，请创建一个。</p>';
+            return;
+        }
+        container.innerHTML = data.map(g => `
+            <div class="card">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5>${g.name}</h5>
+                        <small class="text-muted">姓氏: ${g.surname} | 创建时间: ${g.created_at}</small>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-info"
+                                onclick="showStats(${g.genealogy_id})">统计</button>
+                        <a href="/genealogies/${g.genealogy_id}"
+                           class="btn btn-sm btn-primary">进入</a>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function createGenealogy() {
+        const name = document.getElementById('new-name').value;
+        const surname = document.getElementById('new-surname').value;
+        if (!name || !surname) { alert('请填写完整'); return; }
+        await api('/api/genealogies', 'POST', { name, surname });
+        loadGenealogies();
+    }
+
+    async function showStats(genealogyId) {
+        const data = await api(`/api/genealogies/${genealogyId}/stats`);
+        if (data.error) { alert(data.error); return; }
+        document.getElementById('stats-title').textContent = data.genealogy_name + ' - 统计';
+        document.getElementById('stat-total').textContent = data.total_members;
+        document.getElementById('stat-male').textContent = data.male_count + ' (' + data.male_ratio + '%)';
+        document.getElementById('stat-female').textContent = data.female_count + ' (' + data.female_ratio + '%)';
+        document.getElementById('stat-lifespan').textContent = data.avg_lifespan + ' 岁';
+        document.getElementById('stats-panel').style.display = 'block';
+    }
+</script>
+{% endblock %}

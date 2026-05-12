@@ -62,7 +62,7 @@ POST /api/relations/link
 ### 问题2: 管理员无法访问非创建的族谱统计功能
 
 **严重程度**: 🟠 高  
-**验证状态**: ✅ 已确认存在  
+**验证状态**: ✅ 已修复  
 **位置**: `services/stats_service.py` → `get_dashboard_stats`  
 **表现**: 管理员账户点击任意族谱的"统计"按钮时，弹出"无权访问"错误
 
@@ -107,7 +107,7 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
 ### 问题3: 成员详情页面缺失，点击"详情"按钮报 500 错误
 
 **严重程度**: 🟠 高  
-**验证状态**: ✅ 已确认存在  
+**验证状态**: ✅ 已修复  
 **位置**: `app.py` 第46-49行 + `templates/` 目录  
 **表现**: 在族谱成员列表中点击"详情"按钮后，页面跳转到 500 错误页面
 
@@ -170,7 +170,7 @@ def api_get_member(member_id):
 ### 问题4: 前端缺少删除族谱成员的功能
 
 **严重程度**: 🟠 高  
-**验证状态**: ✅ 已确认存在  
+**验证状态**: ✅ 已修复  
 **位置**: `templates/genealogy_detail.html` 第165-186行  
 **表现**: 族谱成员列表中没有删除按钮，无法通过前端界面删除成员
 
@@ -241,7 +241,7 @@ async function deleteMember(memberId) {
 ### 问题5: 前端缺少编辑族谱成员的功能
 
 **严重程度**: 🟠 高  
-**验证状态**: ✅ 已确认存在  
+**验证状态**: ✅ 已修复  
 **位置**: `templates/genealogy_detail.html` 第165-186行  
 **表现**: 族谱成员列表中没有编辑按钮，无法通过前端界面修改成员信息
 
@@ -308,7 +308,7 @@ async function deleteMember(memberId) {
 ### 问题7: 自引用关系未被阻止
 
 **严重程度**: 🟠 高  
-**验证状态**: ✅ 已确认存在  
+**验证状态**: ✅ 已修复  
 **位置**: `services/relation_service.py` → `add_parent_link`  
 **表现**: 用户可以将自己设为自己的父/母亲，返回 201 成功
 
@@ -552,6 +552,8 @@ DATABASE_CONFIG = {
 | 🟡 中 | 2 | #8, #9 |
 | 🟢 低 | 4 | #10, #11, #12, #13 |
 
+> **2026/5/12 更新**: 问题 #2, #3, #4, #5, #7 已修复并验证通过。问题 #6（权限赋予）经手动测试可正常工作（迁移脚本已执行）。问题 #1 和 #9 已在代码层面修复，测试已通过。
+
 ---
 
 ## 🎯 推荐修复顺序
@@ -600,12 +602,12 @@ DATABASE_CONFIG = {
 | 问题 | 验证结果 | 验证方式 |
 |------|---------|---------|
 | #1 | ✅ 确认存在 | 阅读 `relation_service.py:57`, `family_link_dao.py:32-40`, `schema.sql:48` |
-| #2 | ✅ 确认存在 | 阅读 `stats_service.py:14`，对比其他模块的 `check_access` 调用 |
-| #3 | ✅ 确认存在 | 阅读 `app.py:46-49`，检查 `templates/` 目录确认 `member_detail.html` 不存在 |
-| #4 | ✅ 确认存在 | 阅读 `genealogy_detail.html`，确认操作列只有"详情"按钮 |
-| #5 | ✅ 确认存在 | 同上 |
+| #2 | ✅ 已修复 | 改用 `check_access` 统一权限检查，管理员可正常访问统计 |
+| #3 | ✅ 已修复 | 创建 `templates/member_detail.html`，详情页可正常显示 |
+| #4 | ✅ 已修复 | 操作列已添加"删除"按钮及 `deleteMember` 函数 |
+| #5 | ✅ 已修复 | 操作列已添加"编辑"按钮及 `editMember` 函数 |
 | #6 | ✅ 确认存在 | 阅读 `schema.sql:74`，确认 ENUM 不包含 'admin' 和 'owner' |
-| #7 | ✅ 确认存在 | 阅读 `relation_service.py:41-58`，确认缺少自引用检查 |
+| #7 | ✅ 已修复 | 已添加 `child_id == parent_id` 自引用检查 |
 | #8 | ✅ 确认存在 | 阅读 `member_service.py:57`，确认上界为 2100 |
 | #9 | ✅ 确认存在 | 阅读 `test_relation.py:181-188`，确认测试缺少建立关系步骤 |
 | #10 | ✅ 确认存在 | 阅读 `auth_service.py:9-11`，确认使用 `hashlib.sha256` |

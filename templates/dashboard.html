@@ -36,12 +36,30 @@
         </div>
     </div>
 </div>
+
+<!-- 管理员面板（仅管理员可见） -->
+<div id="admin-panel" class="card mb-4" style="display:none;">
+    <div class="card-body">
+        <h5>管理员</h5>
+        <p>当前管理员：<strong id="admin-name">-</strong></p>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control" id="transfer-username" placeholder="目标用户名">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-warning" onclick="transferAdmin()">转让管理员</button>
+            </div>
+        </div>
+        <small class="text-muted">注意：转让后您将失去管理员身份，此操作不可撤销。</small>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     checkLogin();
     loadGenealogies();
+    checkAdmin();
 
     async function loadGenealogies() {
         const data = await api('/api/genealogies');
@@ -83,6 +101,25 @@
         const result = await api(`/api/genealogies/${genealogyId}`, 'DELETE');
         if (result.error) { alert(result.error); return; }
         loadGenealogies();
+    }
+
+    // ============ 管理员面板 ============
+    async function checkAdmin() {
+        const data = await api('/api/admin/current');
+        if (!data.error) {
+            document.getElementById('admin-name').textContent = data.username;
+            document.getElementById('admin-panel').style.display = 'block';
+        }
+    }
+
+    async function transferAdmin() {
+        const username = document.getElementById('transfer-username').value;
+        if (!username) { alert('请输入目标用户名'); return; }
+        if (!confirm(`确定要将管理员转让给 ${username} 吗？转让后您将失去管理员身份。`)) return;
+        const result = await api('/api/admin/transfer', 'POST', { username });
+        if (result.error) { alert(result.error); return; }
+        alert(result.message);
+        document.getElementById('admin-panel').style.display = 'none';
     }
 
     async function showStats(genealogyId) {

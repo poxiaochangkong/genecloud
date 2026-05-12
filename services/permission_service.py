@@ -64,6 +64,13 @@ def revoke(conn, genealogy_id, target_user_id, operator_id):
     if not ok:
         return None, err
 
+    # 管理员是全局身份，不能通过族谱权限撤销
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (target_user_id,))
+    target_user = cursor.fetchone()
+    if target_user and target_user['is_admin']:
+        return None, "不能撤销管理员的权限"
+
     # 不能撤销比自己更高权限的人
     operator_role = get_user_role(conn, operator_id, genealogy_id)
     target_role = get_user_role(conn, target_user_id, genealogy_id)
@@ -72,3 +79,48 @@ def revoke(conn, genealogy_id, target_user_id, operator_id):
 
     revoke_permission(conn, target_user_id, genealogy_id)
     return {'message': '权限已撤销'}, None
+
+
+def get_current_admin(conn):
+    """获取当前管理员信息"""
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT user_id, username, email FROM users WHERE is_admin = 1")
+    return cursor.fetchone()
+
+
+def transfer_admin(conn, target_username, operator_id):
+    """
+    管理员转让：保证有且仅有1个管理员
+    用数据库事务保证原子性
+    """
+    # 检查操作者是否是管理员
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (operator_id,))
+    operator = cursor.fetchone()
+    if not operator or not operator['is_admin']:
+        return None, "只有管理员可以转让管理员身份"
+
+    # 查找目标用户
+    target = find_user_by_username(conn, target_username)
+    if not target:
+        return None, "目标用户不存在"
+
+    target_id = target['user_id']
+    if target_id == operator_id:
+        return None, "不能转让给自己"
+
+    # 检查目标是否已是管理员
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (target_id,))
+    target_user = cursor.fetchone()
+    if target_user and target_user['is_admin']:
+        return None, "目标用户已经是管理员"
+
+    # 事务：旧admin设为0，新admin设为1
+    try:
+        cursor.execute("UPDATE users SET is_admin = 0 WHERE user_id = %s", (operator_id,))
+        cursor.execute("UPDATE users SET is_admin = 1 WHERE user_id = %s", (target_id,))
+        conn.commit()
+        return {'message': f'管理员已转让给 {target_username}'}, None
+    except Exception as e:
+        conn.rollback()
+        return None, f"转让失败: {str(e)}"

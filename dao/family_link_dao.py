@@ -9,7 +9,7 @@ def find_parents(conn, child_id):
     """查找某人的所有父母"""
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT fl.*, m.name AS parent_name
+        SELECT fl.parent_id AS member_id, m.name, fl.relation_type
         FROM family_links fl
         JOIN members m ON fl.parent_id = m.member_id
         WHERE fl.child_id = %s
@@ -21,7 +21,7 @@ def find_children(conn, parent_id):
     """查找某人的所有子女"""
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT fl.*, m.name AS child_name
+        SELECT fl.child_id AS member_id, m.name
         FROM family_links fl
         JOIN members m ON fl.child_id = m.member_id
         WHERE fl.parent_id = %s
@@ -152,8 +152,8 @@ def find_kinship_path(conn, member_id_a, member_id_b):
                key=lambda mid: path_a_dict[mid]['distance'] + path_b_dict[mid]['distance'])
 
     # 第四步：回溯从 A 到共同祖先、从 B 到共同祖先的路径
-    route_a = _trace_route(cursor, member_id_a, best)
-    route_b = _trace_route(cursor, member_id_b, best)
+    route_a = _trace_route(conn, member_id_a, best)
+    route_b = _trace_route(conn, member_id_b, best)
 
     return {
         'common_ancestor': path_a_dict[best]['name'],
@@ -169,15 +169,15 @@ def _trace_route(conn, from_id, to_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         WITH RECURSIVE route AS (
-            SELECT m.member_id, m.name, m.member_id AS next_parent
+            SELECT m.member_id, m.name, m.member_id AS current_id, 0 AS depth
             FROM members m WHERE m.member_id = %s
             UNION ALL
-            SELECT m.member_id, m.name, fl.parent_id
+            SELECT m.member_id, m.name, fl.parent_id, r.depth + 1
             FROM route r
-            JOIN family_links fl ON r.member_id = fl.child_id
-            JOIN members m ON fl.child_id = m.member_id
-            WHERE r.member_id != %s
+            JOIN family_links fl ON r.current_id = fl.child_id
+            JOIN members m ON fl.parent_id = m.member_id
+            WHERE r.current_id != %s
         )
-        SELECT DISTINCT member_id, name FROM route
+        SELECT member_id, name, MIN(depth) AS depth FROM route GROUP BY member_id, name ORDER BY depth
     """, (from_id, to_id))
     return cursor.fetchall()

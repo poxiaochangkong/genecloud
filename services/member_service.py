@@ -2,6 +2,7 @@
 """
 成员业务逻辑
 """
+import datetime
 from dao.member_dao import (
     find_member_by_id, search_by_name,
     find_members_by_genealogy, insert_member,
@@ -54,8 +55,9 @@ def create_member(conn, genealogy_id, name, gender, birth_year,
         return None, "姓名不能为空"
     if gender not in ('M', 'F'):
         return None, "性别必须为 M 或 F"
-    if birth_year and (birth_year < 1 or birth_year > 2100):
-        return None, "出生年份不合理"
+    current_year = datetime.datetime.now().year
+    if birth_year and (birth_year < 1 or birth_year > current_year):
+        return None, f"出生年份必须在 1 ~ {current_year} 之间"
     if death_year and birth_year and death_year < birth_year:
         return None, "死亡年份不能早于出生年份"
 

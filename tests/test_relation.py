@@ -182,6 +182,11 @@ class TestQueryKinship:
         """Test querying kinship path."""
         gid, pid, cid = create_test_genealogy_and_members(logged_in_client)
         if pid and cid:
+            # Establish relationship first
+            link_resp = logged_in_client.post('/api/relations/link', json={
+                'child_id': cid, 'parent_id': pid, 'relation_type': 'father'
+            })
+            assert link_resp.status_code in [200, 201]
             resp = logged_in_client.get(
                 f'/api/relations/kinship?member_a={pid}&member_b={cid}'
             )

@@ -62,6 +62,8 @@
                                 onclick="showStats(${g.genealogy_id})">统计</button>
                         <a href="/genealogies/${g.genealogy_id}"
                            class="btn btn-sm btn-primary">进入</a>
+                        <button class="btn btn-sm btn-danger"
+                                onclick="deleteGenealogy(${g.genealogy_id})">删除</button>
                     </div>
                 </div>
             </div>
@@ -73,6 +75,13 @@
         const surname = document.getElementById('new-surname').value;
         if (!name || !surname) { alert('请填写完整'); return; }
         await api('/api/genealogies', 'POST', { name, surname });
+        loadGenealogies();
+    }
+
+    async function deleteGenealogy(genealogyId) {
+        if (!confirm('确定要删除该族谱吗？此操作不可恢复！')) return;
+        const result = await api(`/api/genealogies/${genealogyId}`, 'DELETE');
+        if (result.error) { alert(result.error); return; }
         loadGenealogies();
     }
 

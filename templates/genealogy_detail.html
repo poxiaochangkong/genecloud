@@ -50,6 +50,15 @@
 <!-- 成员列表 -->
 <div id="member-list"></div>
 
+<!-- 树形预览 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>族谱树形预览</h5>
+        <button class="btn btn-outline-primary btn-sm mb-2" onclick="loadTree()">加载树形图</button>
+        <div id="tree-view"></div>
+    </div>
+</div>
+
 <!-- 关系操作 -->
 <div class="card mb-3">
     <div class="card-body">
@@ -109,6 +118,29 @@
             </div>
         </div>
         <div id="kinship-result" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- 权限管理 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>权限管理</h5>
+        <button class="btn btn-outline-primary btn-sm mb-2" onclick="loadPermissions()">查看权限</button>
+        <div id="permission-list" class="mb-3"></div>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control" id="perm-username" placeholder="用户名">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="perm-role">
+                    <option value="editor">3级-编辑者</option>
+                    <option value="owner">2级-所有者</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success" onclick="grantPermission()">赋予权限</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -222,6 +254,66 @@
                 ← ${data.common_ancestor} →
                 ${data.path_b.map(p => p.name).reverse().join(' → ')}
             </div>`;
+    }
+
+    // ============ 树形预览 ============
+    async function loadTree() {
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/tree`);
+        const container = document.getElementById('tree-view');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无成员数据。</p>';
+            return;
+        }
+        container.innerHTML = '<ul>' + renderTreeNode(data) + '</ul>';
+    }
+
+    function renderTreeNode(nodes) {
+        return nodes.map(n => {
+            const genderIcon = n.gender === 'M' ? '👨' : '👩';
+            const lifespan = n.death_year ? ` (${n.birth_year}-${n.death_year})` : (n.birth_year ? ` (生于${n.birth_year})` : '');
+            let childrenHtml = '';
+            if (n.children && n.children.length > 0) {
+                childrenHtml = '<ul>' + renderTreeNode(n.children) + '</ul>';
+            }
+            return `<li><strong>${genderIcon} ${n.name}</strong> [ID:${n.member_id}]${lifespan}</li>${childrenHtml}`;
+        }).join('');
+    }
+
+    // ============ 权限管理 ============
+    async function loadPermissions() {
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/permissions`);
+        const container = document.getElementById('permission-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无权限记录</p>';
+            return;
+        }
+        const roleNames = { 'admin': '1级-管理员', 'owner': '2级-所有者', 'editor': '3级-编辑者' };
+        container.innerHTML = '<table class="table table-sm"><thead><tr><th>用户</th><th>权限级别</th><th>操作</th></tr></thead><tbody>'
+            + data.map(p => `
+                <tr>
+                    <td>${p.username}</td>
+                    <td>${roleNames[p.role] || p.role}</td>
+                    <td><button class="btn btn-sm btn-outline-danger" onclick="revokePermission(${p.user_id})">撤销</button></td>
+                </tr>
+            `).join('') + '</tbody></table>';
+    }
+
+    async function grantPermission() {
+        const username = document.getElementById('perm-username').value;
+        const role = document.getElementById('perm-role').value;
+        if (!username) { alert('请输入用户名'); return; }
+        const result = await api(`/api/genealogies/${GENEALOGY_ID}/permissions`, 'POST', { username, role });
+        if (result.error) { alert(result.error); return; }
+        loadPermissions();
+    }
+
+    async function revokePermission(targetUserId) {
+        if (!confirm('确定要撤销该用户的权限吗？')) return;
+        const result = await api(`/api/genealogies/${GENEALOGY_ID}/permissions/${targetUserId}`, 'DELETE');
+        if (result.error) { alert(result.error); return; }
+        loadPermissions();
     }
 </script>
 {% endblock %}

@@ -7,17 +7,7 @@ from dao.family_link_dao import (
     find_all_ancestors, find_all_descendants, find_kinship_path
 )
 from dao.member_dao import find_member_by_id
-from dao.genealogy_dao import find_genealogy_by_id
-
-
-def _check_access(conn, user_id, genealogy_id):
-    """权限校验"""
-    genealogy = find_genealogy_by_id(conn, genealogy_id)
-    if not genealogy:
-        return False, "族谱不存在"
-    if genealogy['created_by'] != user_id:
-        return False, "无权操作"
-    return True, None
+from services.permission_service import check_access
 
 
 def get_parents(conn, member_id, user_id):
@@ -26,7 +16,7 @@ def get_parents(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -40,7 +30,7 @@ def get_children(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -60,7 +50,7 @@ def add_parent_link(conn, child_id, parent_id, relation_type, user_id):
     if child['genealogy_id'] != parent['genealogy_id']:
         return None, "父母和子女必须在同一个族谱"
 
-    ok, err = _check_access(conn, user_id, child['genealogy_id'])
+    ok, err = check_access(conn, user_id, child['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -74,7 +64,7 @@ def query_ancestors(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -88,7 +78,7 @@ def query_descendants(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -108,7 +98,7 @@ def query_kinship(conn, member_id_a, member_id_b, user_id):
     if a['genealogy_id'] != b['genealogy_id']:
         return None, "两人不在同一个族谱"
 
-    ok, err = _check_access(conn, user_id, a['genealogy_id'])
+    ok, err = check_access(conn, user_id, a['genealogy_id'], 3)
     if not ok:
         return None, err
 

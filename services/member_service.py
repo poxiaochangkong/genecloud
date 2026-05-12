@@ -7,22 +7,12 @@ from dao.member_dao import (
     find_members_by_genealogy, insert_member,
     update_member, delete_member
 )
-from dao.genealogy_dao import find_genealogy_by_id
-
-
-def _check_access(conn, user_id, genealogy_id):
-    """检查用户是否有权操作该族谱"""
-    genealogy = find_genealogy_by_id(conn, genealogy_id)
-    if not genealogy:
-        return False, "族谱不存在"
-    if genealogy['created_by'] != user_id:
-        return False, "无权操作该族谱"
-    return True, None
+from services.permission_service import check_access
 
 
 def list_members(conn, genealogy_id, user_id):
     """列出族谱所有成员"""
-    ok, err = _check_access(conn, user_id, genealogy_id)
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return [], err
 
@@ -36,7 +26,7 @@ def get_member_detail(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -45,7 +35,7 @@ def get_member_detail(conn, member_id, user_id):
 
 def search_members(conn, genealogy_id, keyword, user_id):
     """模糊搜索成员"""
-    ok, err = _check_access(conn, user_id, genealogy_id)
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return [], err
 
@@ -56,7 +46,7 @@ def search_members(conn, genealogy_id, keyword, user_id):
 def create_member(conn, genealogy_id, name, gender, birth_year,
                   death_year, bio, user_id):
     """创建新成员"""
-    ok, err = _check_access(conn, user_id, genealogy_id)
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -81,7 +71,7 @@ def modify_member(conn, member_id, name, gender, birth_year,
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -95,7 +85,7 @@ def remove_member(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = _check_access(conn, user_id, member['genealogy_id'])
+    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 

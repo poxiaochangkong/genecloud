@@ -81,7 +81,7 @@
                         <a href="/genealogies/${g.genealogy_id}"
                            class="btn btn-sm btn-primary">进入</a>
                         <button class="btn btn-sm btn-danger"
-                                onclick="deleteGenealogy(${g.genealogy_id})">删除</button>
+                                onclick="deleteGenealogy(${g.genealogy_id}, this)">删除</button>
                     </div>
                 </div>
             </div>
@@ -96,10 +96,12 @@
         loadGenealogies();
     }
 
-    async function deleteGenealogy(genealogyId) {
+    async function deleteGenealogy(genealogyId, btn) {
         if (!confirm('确定要删除该族谱吗？此操作不可恢复！')) return;
+        btn.disabled = true;
+        btn.textContent = '删除中...';
         const result = await api(`/api/genealogies/${genealogyId}`, 'DELETE');
-        if (result.error) { alert(result.error); return; }
+        if (result.error) { alert(result.error); btn.disabled = false; btn.textContent = '删除'; return; }
         loadGenealogies();
     }
 

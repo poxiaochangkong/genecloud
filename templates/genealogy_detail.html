@@ -180,6 +180,10 @@
                 <td>
                     <a href="/members/${m.member_id}"
                        class="btn btn-sm btn-outline-primary">详情</a>
+                    <button class="btn btn-sm btn-outline-secondary"
+                            onclick="editMember(${m.member_id})">编辑</button>
+                    <button class="btn btn-sm btn-outline-danger"
+                            onclick="deleteMember(${m.member_id}, this)">删除</button>
                 </td>
             </tr>
         `).join('') + '</tbody></table>';
@@ -195,6 +199,41 @@
         };
         const result = await api(`/api/genealogies/${GENEALOGY_ID}/members`, 'POST', data);
         if (result.error) { alert(result.error); return; }
+        loadMembers();
+    }
+
+    // ============ 编辑 / 删除成员 ============
+    async function editMember(memberId) {
+        // 获取当前成员数据
+        const data = await api(`/api/members/${memberId}`);
+        if (data.error) { alert(data.error); return; }
+
+        const name = prompt('姓名：', data.name);
+        if (!name) return;
+        const gender = prompt('性别（M/F）：', data.gender);
+        if (!gender || (gender !== 'M' && gender !== 'F')) { alert('性别须为 M 或 F'); return; }
+        const birthYear = prompt('出生年（留空不填）：', data.birth_year || '');
+        const deathYear = prompt('死亡年（留空不填）：', data.death_year || '');
+        const bio = prompt('简介：', data.bio || '');
+
+        const payload = {
+            name: name,
+            gender: gender,
+            birth_year: parseInt(birthYear) || null,
+            death_year: parseInt(deathYear) || null,
+            bio: bio,
+        };
+        const result = await api(`/api/members/${memberId}`, 'PUT', payload);
+        if (result.error) { alert(result.error); return; }
+        loadMembers();
+    }
+
+    async function deleteMember(memberId, btn) {
+        if (!confirm('确定要删除该成员吗？此操作不可恢复！')) return;
+        btn.disabled = true;
+        btn.textContent = '删除中...';
+        const result = await api(`/api/members/${memberId}`, 'DELETE');
+        if (result.error) { alert(result.error); btn.disabled = false; btn.textContent = '删除'; return; }
         loadMembers();
     }
 

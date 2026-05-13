@@ -35,11 +35,11 @@ class TestGrantPermission:
         # Register a second user
         uuid_str = uuid.uuid4().hex[:8]
         client.post('/api/register', json={
-            'username': f'grant_target_{uuid_str}',
+            'username': f'grant_{uuid_str}',
             'password': 'password123',
             'email': f'grant_{uuid_str}@test.com'
         })
-        
+
         # Create genealogy
         create_resp = logged_in_client.post('/api/genealogies', json={
             'name': f'Grant Test {uuid.uuid4().hex[:6]}',
@@ -48,7 +48,7 @@ class TestGrantPermission:
         if create_resp.status_code == 201:
             gid = create_resp.get_json()['genealogy_id']
             resp = logged_in_client.post(f'/api/genealogies/{gid}/permissions', json={
-                'username': f'grant_target_{uuid_str}',
+                'username': f'grant_{uuid_str}',
                 'role': 'editor'
             })
             assert resp.status_code == 200
@@ -83,7 +83,7 @@ class TestRevokePermission:
         """Test revoking permission."""
         uuid_str = uuid.uuid4().hex[:8]
         reg_resp = client.post('/api/register', json={
-            'username': f'revoke_target_{uuid_str}',
+            'username': f'revoke_{uuid_str}',
             'password': 'password123',
             'email': f'revoke_{uuid_str}@test.com'
         })

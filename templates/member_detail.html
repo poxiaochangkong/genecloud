@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% block title %}成员详情{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 id="member-name">成员详情</h2>
+    <div>
+        <a href="javascript:history.back()" class="btn btn-outline-secondary">返回</a>
+    </div>
+</div>
+
+<div id="member-info" class="card mb-3">
+    <div class="card-body">
+        <h5>基本信息</h5>
+        <dl class="row">
+            <dt class="col-sm-2">姓名</dt>
+            <dd class="col-sm-10" id="info-name">-</dd>
+            <dt class="col-sm-2">性别</dt>
+            <dd class="col-sm-10" id="info-gender">-</dd>
+            <dt class="col-sm-2">出生年</dt>
+            <dd class="col-sm-10" id="info-birth">-</dd>
+            <dt class="col-sm-2">死亡年</dt>
+            <dd class="col-sm-10" id="info-death">-</dd>
+            <dt class="col-sm-2">简介</dt>
+            <dd class="col-sm-10" id="info-bio">-</dd>
+        </dl>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5>父母</h5>
+                <div id="parents-list">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5>子女</h5>
+                <div id="children-list">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5>祖先</h5>
+                <div id="ancestors-list">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5>后代</h5>
+                <div id="descendants-list">
+                    <p class="text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const MEMBER_ID = {{ member_id }};
+    checkLogin();
+    loadMember();
+
+    async function loadMember() {
+        const data = await api(`/api/members/${MEMBER_ID}`);
+        if (data.error) {
+            document.querySelector('.container').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        document.getElementById('member-name').textContent = data.name + ' - 成员详情';
+        document.getElementById('info-name').textContent = data.name;
+        document.getElementById('info-gender').textContent = data.gender === 'M' ? '男' : '女';
+        document.getElementById('info-birth').textContent = data.birth_year || '-';
+        document.getElementById('info-death').textContent = data.death_year || '在世';
+        document.getElementById('info-bio').textContent = data.bio || '无';
+
+        // 加载关系数据
+        loadParents();
+        loadChildren();
+        loadAncestors();
+        loadDescendants();
+    }
+
+    async function loadParents() {
+        const data = await api(`/api/members/${MEMBER_ID}/parents`);
+        const container = document.getElementById('parents-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无记录</p>';
+            return;
+        }
+        container.innerHTML = '<ul class="list-group">' + data.map(p => `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/members/${p.member_id}">${p.name}</a>
+                <span class="badge bg-secondary">${p.relation_type === 'father' ? '父亲' : '母亲'}</span>
+            </li>
+        `).join('') + '</ul>';
+    }
+
+    async function loadChildren() {
+        const data = await api(`/api/members/${MEMBER_ID}/children`);
+        const container = document.getElementById('children-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无记录</p>';
+            return;
+        }
+        container.innerHTML = '<ul class="list-group">' + data.map(c => `
+            <li class="list-group-item">
+                <a href="/members/${c.member_id}">${c.name}</a>
+            </li>
+        `).join('') + '</ul>';
+    }
+
+    async function loadAncestors() {
+        const data = await api(`/api/members/${MEMBER_ID}/ancestors`);
+        const container = document.getElementById('ancestors-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">无祖先记录</p>';
+            return;
+        }
+        container.innerHTML = '<ul class="list-group">' + data.map(a => `
+            <li class="list-group-item">[${a.generation}代] <a href="/members/${a.member_id}">${a.name}</a></li>
+        `).join('') + '</ul>';
+    }
+
+    async function loadDescendants() {
+        const data = await api(`/api/members/${MEMBER_ID}/descendants`);
+        const container = document.getElementById('descendants-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">无后代记录</p>';
+            return;
+        }
+        container.innerHTML = '<ul class="list-group">' + data.map(d => `
+            <li class="list-group-item">[${d.generation}代] <a href="/members/${d.member_id}">${d.name}</a></li>
+        `).join('') + '</ul>';
+    }
+</script>
+{% endblock %}

@@ -4,6 +4,7 @@
 """
 from dao.member_dao import find_members_by_genealogy
 from dao.genealogy_dao import find_genealogy_by_id
+from services.permission_service import check_access
 
 
 def get_dashboard_stats(conn, genealogy_id, user_id):
@@ -11,8 +12,10 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
     genealogy = find_genealogy_by_id(conn, genealogy_id)
     if not genealogy:
         return None, "族谱不存在"
-    if genealogy['created_by'] != user_id:
-        return None, "无权访问"
+
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    if not ok:
+        return None, err
 
     members = find_members_by_genealogy(conn, genealogy_id)
 

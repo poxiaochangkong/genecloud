@@ -40,6 +40,13 @@ def get_children(conn, member_id, user_id):
 
 def add_parent_link(conn, child_id, parent_id, relation_type, user_id):
     """建立亲子关系"""
+    if child_id == parent_id:
+        return None, "不能将自己设为自己的父母"
+
+    valid_types = ('father', 'mother')
+    if relation_type not in valid_types:
+        return None, f"relation_type 必须是 {valid_types} 之一"
+
     child = find_member_by_id(conn, child_id)
     parent = find_member_by_id(conn, parent_id)
 

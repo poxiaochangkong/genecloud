@@ -52,11 +52,14 @@ def delete_genealogy(conn, genealogy_id):
     cursor = conn.cursor()
     # 先删关系，再删成员，最后删族谱
     # 注意：实际项目中应该用事务
-    cursor.execute("""
-        DELETE fl FROM family_links fl
-        JOIN members m ON fl.child_id = m.member_id OR fl.parent_id = m.member_id
-        WHERE m.genealogy_id = %s
-    """, (genealogy_id,))
+    # 删除 family_links - 通过子查询匹配 genealogy_id
+    cursor.execute(
+        "DELETE FROM family_links WHERE child_id IN "
+        "(SELECT member_id FROM members WHERE genealogy_id = %s) "
+        "OR parent_id IN "
+        "(SELECT member_id FROM members WHERE genealogy_id = %s)",
+        (genealogy_id, genealogy_id)
+    )
     cursor.execute(
         "DELETE FROM marriages WHERE member_id1 IN "
         "(SELECT member_id FROM members WHERE genealogy_id = %s) "

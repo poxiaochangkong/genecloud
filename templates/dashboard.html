@@ -24,19 +24,6 @@
 <!-- 族谱列表 -->
 <div id="genealogy-list"></div>
 
-<!-- 统计面板 -->
-<div id="stats-panel" class="card" style="display:none;">
-    <div class="card-body">
-        <h5 id="stats-title"></h5>
-        <div class="row">
-            <div class="col-md-3"><strong>总人数：</strong><span id="stat-total"></span></div>
-            <div class="col-md-3"><strong>男性：</strong><span id="stat-male"></span></div>
-            <div class="col-md-3"><strong>女性：</strong><span id="stat-female"></span></div>
-            <div class="col-md-3"><strong>平均寿命：</strong><span id="stat-lifespan"></span></div>
-        </div>
-    </div>
-</div>
-
 <!-- 管理员面板（仅管理员可见） -->
 <div id="admin-panel" class="card mb-4" style="display:none;">
     <div class="card-body">
@@ -51,6 +38,47 @@
             </div>
         </div>
         <small class="text-muted">注意：转让后您将失去管理员身份，此操作不可撤销。</small>
+
+        <hr>
+        <h5>用户管理</h5>
+        <div id="user-list">
+            <p class="text-muted">加载中...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 删除用户确认弹窗 -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger">⚠️ 危险操作</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>确定要删除用户 <span id="del-username" class="text-danger"></span> 吗？</strong></p>
+                <div class="alert alert-danger">
+                    <p>该操作将 <strong>永久删除</strong> 以下数据：</p>
+                    <ul>
+                        <li>该用户账号</li>
+                        <li>该用户创建的 <strong id="del-genealogy-count">0</strong> 个族谱</li>
+                        <li>族谱中的所有成员、关系（血缘 & 婚姻）数据</li>
+                        <li>所有相关的协作记录</li>
+                    </ul>
+                    <p class="mb-0"><strong>此操作不可撤销！</strong></p>
+                </div>
+                <div class="mb-3">
+                    <label for="del-confirm-input" class="form-label">
+                        请键入 <strong id="del-confirm-username"></strong> 以确认删除：
+                    </label>
+                    <input type="text" class="form-control" id="del-confirm-input" placeholder="输入用户名确认">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="del-confirm-btn" disabled>确认删除</button>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -61,6 +89,8 @@
     loadGenealogies();
     checkAdmin();
 
+    // ============ 族谱操作 ============
+
     async function loadGenealogies() {
         const data = await api('/api/genealogies');
         const container = document.getElementById('genealogy-list');
@@ -69,7 +99,7 @@
             return;
         }
         container.innerHTML = data.map(g => `
-            <div class="card">
+            <div class="card mb-3" id="genealogy-card-${g.genealogy_id}">
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h5>${g.name}</h5>
@@ -77,11 +107,20 @@
                     </div>
                     <div>
                         <button class="btn btn-sm btn-info"
-                                onclick="showStats(${g.genealogy_id})">统计</button>
+                                onclick="showStats(${g.genealogy_id}, this)">统计</button>
                         <a href="/genealogies/${g.genealogy_id}"
                            class="btn btn-sm btn-primary">进入</a>
                         <button class="btn btn-sm btn-danger"
                                 onclick="deleteGenealogy(${g.genealogy_id}, this)">删除</button>
+                    </div>
+                </div>
+                <div class="stats-section" style="display:none; border-top:1px solid #dee2e6; padding:10px 16px;">
+                    <h6 class="stats-title"></h6>
+                    <div class="row">
+                        <div class="col-md-3"><strong>总人数：</strong><span class="stat-total"></span></div>
+                        <div class="col-md-3"><strong>男性：</strong><span class="stat-male"></span></div>
+                        <div class="col-md-3"><strong>女性：</strong><span class="stat-female"></span></div>
+                        <div class="col-md-3"><strong>平均寿命：</strong><span class="stat-lifespan"></span></div>
                     </div>
                 </div>
             </div>
@@ -105,12 +144,35 @@
         loadGenealogies();
     }
 
+    async function showStats(genealogyId, btn) {
+        const card = document.getElementById('genealogy-card-' + genealogyId);
+        const section = card.querySelector('.stats-section');
+        // 如果已经展开，则收起
+        if (section.style.display === 'block') {
+            section.style.display = 'none';
+            return;
+        }
+        const data = await api(`/api/genealogies/${genealogyId}/stats`);
+        if (data.error) { alert(data.error); return; }
+        section.querySelector('.stats-title').textContent = data.genealogy_name + ' - 统计';
+        section.querySelector('.stat-total').textContent = data.total_members;
+        section.querySelector('.stat-male').textContent = data.male_count + ' (' + data.male_ratio + '%)';
+        section.querySelector('.stat-female').textContent = data.female_count + ' (' + data.female_ratio + '%)';
+        section.querySelector('.stat-lifespan').textContent = data.avg_lifespan + ' 岁';
+        section.style.display = 'block';
+    }
+
     // ============ 管理员面板 ============
+
+    let currentAdminId = null;
+
     async function checkAdmin() {
         const data = await api('/api/admin/current');
         if (!data.error) {
+            currentAdminId = data.user_id;
             document.getElementById('admin-name').textContent = data.username;
             document.getElementById('admin-panel').style.display = 'block';
+            loadUsers();
         }
     }
 
@@ -124,15 +186,112 @@
         document.getElementById('admin-panel').style.display = 'none';
     }
 
-    async function showStats(genealogyId) {
-        const data = await api(`/api/genealogies/${genealogyId}/stats`);
-        if (data.error) { alert(data.error); return; }
-        document.getElementById('stats-title').textContent = data.genealogy_name + ' - 统计';
-        document.getElementById('stat-total').textContent = data.total_members;
-        document.getElementById('stat-male').textContent = data.male_count + ' (' + data.male_ratio + '%)';
-        document.getElementById('stat-female').textContent = data.female_count + ' (' + data.female_ratio + '%)';
-        document.getElementById('stat-lifespan').textContent = data.avg_lifespan + ' 岁';
-        document.getElementById('stats-panel').style.display = 'block';
+    // ============ 用户管理 ============
+
+    async function loadUsers() {
+        const userList = document.getElementById('user-list');
+        const data = await api('/api/admin/users');
+        if (data.error) {
+            userList.innerHTML = '<p class="text-danger">加载失败</p>';
+            return;
+        }
+        // 过滤掉当前 admin 和管理员用户
+        const normalUsers = data.filter(u => !u.is_admin);
+        if (normalUsers.length === 0) {
+            userList.innerHTML = '<p class="text-muted">暂无其他用户。</p>';
+            return;
+        }
+        userList.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>邮箱</th>
+                            <th>族谱数</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${normalUsers.map(u => `
+                            <tr>
+                                <td>${u.user_id}</td>
+                                <td>${u.username}</td>
+                                <td>${u.email || '-'}</td>
+                                <td>${u.genealogy_count || 0}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger"
+                                            onclick="previewDeleteUser(${u.user_id}, '${u.username}')">
+                                        删除
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
     }
+
+    let pendingDeleteUserId = null;
+
+    async function previewDeleteUser(userId, username) {
+        pendingDeleteUserId = null;
+
+        const preview = await api(`/api/admin/users/${userId}/preview`);
+        if (preview.error) { alert(preview.error); return; }
+
+        pendingDeleteUserId = userId;
+
+        // 填充弹窗信息
+        document.getElementById('del-username').textContent = preview.username;
+        document.getElementById('del-genealogy-count').textContent = preview.genealogy_count;
+        document.getElementById('del-confirm-username').textContent = preview.username;
+
+        // 重置输入和按钮
+        document.getElementById('del-confirm-input').value = '';
+        document.getElementById('del-confirm-btn').disabled = true;
+
+        // 显示弹窗
+        const modal = new bootstrap.Modal(document.getElementById('deleteUserModal'));
+        modal.show();
+    }
+
+    // 监听确认输入框：输入的用户名匹配时才启用删除按钮
+    document.addEventListener('DOMContentLoaded', function () {
+        const confirmInput = document.getElementById('del-confirm-input');
+        const confirmBtn = document.getElementById('del-confirm-btn');
+
+        confirmInput.addEventListener('input', function () {
+            const expected = document.getElementById('del-confirm-username').textContent;
+            confirmBtn.disabled = this.value.trim() !== expected;
+        });
+
+        confirmBtn.addEventListener('click', async function () {
+            if (pendingDeleteUserId === null) return;
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = '删除中...';
+
+            const result = await api(`/api/admin/users/${pendingDeleteUserId}`, 'DELETE');
+            if (result.error) {
+                alert(result.error);
+                btn.disabled = false;
+                btn.textContent = '确认删除';
+                return;
+            }
+
+            // 关闭弹窗
+            const modal = bootstrap.Modal.getInstance(document.getElementById('deleteUserModal'));
+            modal.hide();
+
+            alert(result.message);
+            pendingDeleteUserId = null;
+
+            // 刷新用户列表
+            loadUsers();
+        });
+    });
 </script>
 {% endblock %}

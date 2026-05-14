@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}寻根溯源{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -19,6 +20,39 @@
             padding-left: 20px;
             border-left: 2px solid #dee2e6;
             margin: 5px 0;
+        }
+
+        /* 树形预览折叠/展开 */
+        #tree-view ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+
+        #tree-view>ul.tree-root {
+            padding-left: 0;
+        }
+
+        #tree-view li {
+            margin: 4px 0;
+            line-height: 1.6;
+        }
+
+        .tree-toggle {
+            cursor: pointer;
+            user-select: none;
+            display: inline-block;
+            width: 16px;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .tree-toggle:hover {
+            color: #0d6efd;
+        }
+
+        .tree-toggle-placeholder {
+            visibility: hidden;
         }
     </style>
 </head>

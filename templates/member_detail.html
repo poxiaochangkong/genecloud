@@ -27,7 +27,18 @@
 </div>
 
 <div class="row mb-3">
-    <div class="col-md-6">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5>配偶</h5>
+                <div id="spouses-list">
+                    <p class="text-muted">加载中...</p>
+                </div>
+                <button class="btn btn-sm btn-outline-success mt-2" onclick="showAddSpouse()">+ 添加配偶</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
         <div class="card">
             <div class="card-body">
                 <h5>父母</h5>
@@ -37,7 +48,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card">
             <div class="card-body">
                 <h5>子女</h5>
@@ -98,6 +109,7 @@
         loadChildren();
         loadAncestors();
         loadDescendants();
+        loadSpouses();
     }
 
     async function loadParents() {
@@ -142,6 +154,48 @@
         container.innerHTML = '<ul class="list-group">' + data.map(a => `
             <li class="list-group-item">[${a.generation}代] <a href="/members/${a.member_id}">${a.name}</a></li>
         `).join('') + '</ul>';
+    }
+
+    async function loadSpouses() {
+        const data = await api(`/api/members/${MEMBER_ID}/spouses`);
+        const container = document.getElementById('spouses-list');
+        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = '<p class="text-muted">暂无记录</p>';
+            return;
+        }
+        container.innerHTML = '<ul class="list-group">' + data.map(s => `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/members/${s.member_id}">${s.name}</a>
+                <span class="badge bg-info">配偶 (${s.marriage_year || '未知年份'})</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeMarriage(${s.marriage_id})">解除</button>
+            </li>
+        `).join('') + '</ul>';
+    }
+
+    async function removeMarriage(marriageId) {
+        if (!confirm('确定要解除婚姻关系吗？')) return;
+        const result = await api(`/api/relations/marriage/${marriageId}`, 'DELETE');
+        if (result.error) { alert(result.error); return; }
+        loadSpouses();
+    }
+
+    function showAddSpouse() {
+        const spouseId = prompt('请输入配偶的成员ID：');
+        if (!spouseId) return;
+        const marriageYear = prompt('请输入结婚年份（可选）：');
+        addMarriage(parseInt(spouseId), marriageYear ? parseInt(marriageYear) : null);
+    }
+
+    async function addMarriage(spouseId, marriageYear) {
+        const result = await api('/api/relations/marriage', 'POST', {
+            member_id1: MEMBER_ID,
+            member_id2: spouseId,
+            marriage_year: marriageYear,
+        });
+        if (result.error) { alert(result.error); return; }
+        alert('婚姻关系建立成功');
+        loadSpouses();
     }
 
     async function loadDescendants() {

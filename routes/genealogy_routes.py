@@ -148,17 +148,22 @@ def api_genealogy_tree(genealogy_id):
             }
             children_map[mid] = []
 
-        # 填充父子关系
+        # 填充父子关系（按父系挂载：只将孩子挂到父亲名下，避免通过母亲重复）
         for m in members:
             parents = find_parents(conn, m['member_id'])
             if not parents:
                 # 没有父母 → 顶层节点候选
                 children_map[None].append(m['member_id']) if None in children_map else children_map.setdefault(None, [m['member_id']])
             else:
-                for p in parents:
-                    pid = p['parent_id']
-                    if pid in member_map:
-                        member_map[pid]['children'].append(member_map[m['member_id']])
+                # 先找父亲；只挂到父亲名下，母亲不重复挂载以保持树形结构清晰
+                father = next((p for p in parents if p['relation_type'] == 'father'), None)
+                if father and father['member_id'] in member_map:
+                    member_map[father['member_id']]['children'].append(member_map[m['member_id']])
+                else:
+                    # 没有父亲时挂到母亲名下
+                    mother = next((p for p in parents if p['relation_type'] == 'mother'), None)
+                    if mother and mother['member_id'] in member_map:
+                        member_map[mother['member_id']]['children'].append(member_map[m['member_id']])
 
         # 找根节点（没有父母的人）
         roots = []

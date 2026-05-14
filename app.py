@@ -9,7 +9,8 @@ from routes.genealogy_routes import genealogy_bp
 from routes.member_routes import member_bp
 from routes.relation_routes import relation_bp
 from dao.db import get_connection
-from services.permission_service import get_current_admin, transfer_admin
+from services.permission_service import get_current_admin, transfer_admin, delete_user_cascade, preview_delete_user
+from dao.user_dao import find_all_users
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -80,6 +81,62 @@ def api_transfer_admin():
     conn = get_connection()
     try:
         result, error = transfer_admin(conn, data['username'], user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users')
+def api_admin_list_users():
+    """获取所有用户列表（仅限admin）"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+    conn = get_connection()
+    try:
+        # 验证操作者是 admin
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (user_id,))
+        operator = cursor.fetchone()
+        if not operator or not operator['is_admin']:
+            return jsonify({'error': '无权限'}), 403
+        users = find_all_users(conn)
+        # 补充每个用户的族谱数
+        from dao.user_dao import count_genealogies_by_user
+        for u in users:
+            u['genealogy_count'] = count_genealogies_by_user(conn, u['user_id'])
+        return jsonify(users), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users/<int:target_user_id>/preview')
+def api_admin_preview_delete(target_user_id):
+    """预览删除用户的影响"""
+    operator_id = session.get('user_id')
+    if not operator_id:
+        return jsonify({'error': '未登录'}), 401
+    conn = get_connection()
+    try:
+        result, error = preview_delete_user(conn, target_user_id, operator_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/users/<int:target_user_id>', methods=['DELETE'])
+def api_admin_delete_user(target_user_id):
+    """删除用户及其所有族谱"""
+    operator_id = session.get('user_id')
+    if not operator_id:
+        return jsonify({'error': '未登录'}), 401
+    conn = get_connection()
+    try:
+        result, error = delete_user_cascade(conn, target_user_id, operator_id)
         if error:
             return jsonify({'error': error}), 400
         return jsonify(result), 200

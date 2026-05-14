@@ -6,7 +6,8 @@ from flask import Blueprint, request, jsonify, session
 from dao.db import get_connection
 from services.relation_service import (
     get_parents, get_children, add_parent_link,
-    query_ancestors, query_descendants, query_kinship
+    query_ancestors, query_descendants, query_kinship,
+    get_spouses, add_marriage, remove_marriage
 )
 
 relation_bp = Blueprint('relations', __name__)
@@ -101,6 +102,64 @@ def api_descendants(member_id):
     conn = get_connection()
     try:
         result, error = query_descendants(conn, member_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@relation_bp.route('/api/members/<int:member_id>/spouses')
+def api_get_spouses(member_id):
+    """获取某人的配偶"""
+    user_id = _get_user_id()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = get_spouses(conn, member_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@relation_bp.route('/api/relations/marriage', methods=['POST'])
+def api_add_marriage():
+    """建立夫妻关系"""
+    user_id = _get_user_id()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    data = request.get_json()
+    conn = get_connection()
+    try:
+        result, error = add_marriage(
+            conn,
+            data['member_id1'],
+            data['member_id2'],
+            data.get('marriage_year'),
+            user_id
+        )
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 201
+    finally:
+        conn.close()
+
+
+@relation_bp.route('/api/relations/marriage/<int:marriage_id>', methods=['DELETE'])
+def api_remove_marriage(marriage_id):
+    """解除婚姻关系"""
+    user_id = _get_user_id()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = remove_marriage(conn, marriage_id, user_id)
         if error:
             return jsonify({'error': error}), 400
         return jsonify(result), 200

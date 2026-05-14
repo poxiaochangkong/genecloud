@@ -6,6 +6,11 @@ from dao.permission_dao import (
     get_user_role, get_genealogy_permissions,
     grant_permission, revoke_permission, find_user_by_username
 )
+from dao.user_dao import (
+    find_user_by_id, find_all_users, find_genealogies_by_creator,
+    count_genealogies_by_user, delete_user_by_id
+)
+from dao.genealogy_dao import delete_genealogy
 
 
 # 权限级别映射
@@ -124,3 +129,94 @@ def transfer_admin(conn, target_username, operator_id):
     except Exception as e:
         conn.rollback()
         return None, f"转让失败: {str(e)}"
+
+
+def delete_user_cascade(conn, target_user_id, operator_id):
+    """
+    删除用户及其创建的所有族谱（级联删除成员、关系、协作）
+    只有 admin 可以操作，且不能删除自己或另一位 admin
+    返回: (result, error_message)
+    """
+    # 检查操作者是否是 admin
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (operator_id,))
+    operator = cursor.fetchone()
+    if not operator or not operator['is_admin']:
+        return None, "只有管理员可以删除用户"
+
+    # 检查目标用户是否存在
+    target = find_user_by_id(conn, target_user_id)
+    if not target:
+        return None, "目标用户不存在"
+
+    # 不能删除自己
+    if target_user_id == operator_id:
+        return None, "不能删除自己"
+
+    # 不能删除另一位管理员
+    if target.get('is_admin'):
+        return None, "不能删除管理员用户"
+
+    # 查询该用户创建的所有族谱
+    genealogies = find_genealogies_by_creator(conn, target_user_id)
+    genealogy_count = len(genealogies)
+
+    try:
+        # 逐个删除该用户创建的族谱（delete_genealogy 会级联删除成员/关系/协作）
+        for g in genealogies:
+            delete_genealogy(conn, g['genealogy_id'])
+
+        # 删除该用户参与的其他协作记录（非 owner 的 collaboration）
+        cursor.execute(
+            "DELETE FROM collaborations WHERE user_id = %s",
+            (target_user_id,)
+        )
+
+        # 最后删除用户本身
+        deleted = delete_user_by_id(conn, target_user_id)
+        if deleted == 0:
+            conn.rollback()
+            return None, "删除用户失败"
+
+        conn.commit()
+        return {
+            'message': f'用户 {target["username"]} 已删除',
+            'deleted_genealogies': genealogy_count,
+            'deleted_user_id': target_user_id
+        }, None
+    except Exception as e:
+        conn.rollback()
+        return None, f"删除失败: {str(e)}"
+
+
+def preview_delete_user(conn, target_user_id, operator_id):
+    """
+    预览删除用户的影响（不实际执行删除）
+    返回用户信息、其创建的族谱列表等
+    """
+    # 检查操作者是否是 admin
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (operator_id,))
+    operator = cursor.fetchone()
+    if not operator or not operator['is_admin']:
+        return None, "只有管理员可以删除用户"
+
+    target = find_user_by_id(conn, target_user_id)
+    if not target:
+        return None, "目标用户不存在"
+
+    if target_user_id == operator_id:
+        return None, "不能删除自己"
+
+    if target.get('is_admin'):
+        return None, "不能删除管理员用户"
+
+    genealogies = find_genealogies_by_creator(conn, target_user_id)
+
+    return {
+        'user_id': target['user_id'],
+        'username': target['username'],
+        'email': target.get('email'),
+        'genealogy_count': len(genealogies),
+        'genealogies': [{'id': g['genealogy_id'], 'name': g['name']} for g in genealogies]
+    }, None

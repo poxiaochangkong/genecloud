@@ -33,3 +33,44 @@ def insert_user(conn, username, password_hash, email=None):
     )
     conn.commit()
     return cursor.lastrowid        # 返回新用户的 user_id
+
+
+def delete_user_by_id(conn, user_id):
+    """根据ID删除用户"""
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM users WHERE user_id = %s",
+        (user_id,)
+    )
+    conn.commit()
+    return cursor.rowcount            # 返回受影响行数
+
+
+def find_all_users(conn):
+    """查询所有用户（不含密码哈希），按创建时间升序"""
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT user_id, username, email, is_admin, created_at FROM users ORDER BY created_at"
+    )
+    return cursor.fetchall()
+
+
+def count_genealogies_by_user(conn, user_id):
+    """统计某用户创建的族谱数量"""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) AS cnt FROM genealogies WHERE created_by = %s",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    return row[0]
+
+
+def find_genealogies_by_creator(conn, user_id):
+    """查询某用户创建的所有族谱ID和名称"""
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT genealogy_id, name FROM genealogies WHERE created_by = %s",
+        (user_id,)
+    )
+    return cursor.fetchall()

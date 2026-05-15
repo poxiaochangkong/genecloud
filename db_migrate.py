@@ -29,6 +29,27 @@ cursor.execute("""
 conn.commit()
 print(f"OK: inserted {cursor.rowcount} owner records")
 
+# 4. 添加性能优化索引
+INDEXES = [
+    ("members", "idx_members_genealogy", "genealogy_id"),
+    ("family_links", "idx_family_links_child", "child_id"),
+    ("family_links", "idx_family_links_parent", "parent_id"),
+    ("marriages", "idx_marriages_member1", "member_id1"),
+    ("marriages", "idx_marriages_member2", "member_id2"),
+    ("genealogies", "idx_genealogies_creator", "created_by"),
+    ("collaborations", "idx_collaborations_genealogy", "genealogy_id"),
+]
+
+for table, idx_name, column in INDEXES:
+    try:
+        cursor.execute(f"CREATE INDEX {idx_name} ON {table} ({column})")
+        print(f"OK: {idx_name} created on {table}({column})")
+    except mysql.connector.errors.ProgrammingError as e:
+        if "Duplicate" in str(e):
+            print(f"SKIP: {idx_name} already exists")
+        else:
+            print(f"WARN: {idx_name} - {e}")
+
 cursor.close()
 conn.close()
 print("Migration done.")

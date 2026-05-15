@@ -55,7 +55,7 @@
     <div class="card-body">
         <h5>族谱树形预览</h5>
         <button class="btn btn-outline-primary btn-sm mb-2" onclick="loadTree()">加载树形图</button>
-        <div id="tree-view"></div>
+        <div id="tree-view" class="pedigree-chart"></div>
     </div>
 </div>
 
@@ -295,8 +295,9 @@
             </div>`;
     }
 
-    // ============ 树形预览（支持折叠/展开） ============
-    let collapseState = {};  // member_id -> true=折叠, false=展开
+    // ============ 族谱图预览（支持折叠/展开） ============
+    let collapseState = {};  // member_id -> true=collapsed, false=expanded
+    let treeDataCache = null;  // cache tree data for re-render on toggle
 
     async function loadTree() {
         const data = await api(`/api/genealogies/${GENEALOGY_ID}/tree`);
@@ -306,63 +307,106 @@
             container.innerHTML = '<p class="text-muted">暂无成员数据。</p>';
             return;
         }
-        // 初始化折叠状态：有子节点的默认展开
+        // Initialize collapse state: default expanded
         collapseState = {};
-        function initCollapse(nodes) {
-            nodes.forEach(n => {
-                if (n.children && n.children.length > 0) {
-                    collapseState[n.member_id] = false; // false=展开
-                    initCollapse(n.children);
-                }
-            });
-        }
+        treeDataCache = data;
         initCollapse(data);
-        // 清除旧的缓存数据，确保重新渲染时保存新的数据
-        delete container.dataset.treeData;
-        container.innerHTML = '<ul class="tree-root">' + renderTreeNode(data) + '</ul>';
+
+        // Render the pedigree chart
+        container.innerHTML = renderPedigreeForest(data);
+    }
+
+    function initCollapse(nodes) {
+        nodes.forEach(n => {
+            if (n.children && n.children.length > 0) {
+                collapseState[n.member_id] = false; // false = expanded
+                initCollapse(n.children);
+            }
+        });
     }
 
     function toggleCollapse(memberId) {
         collapseState[memberId] = !collapseState[memberId];
-        // 重新渲染整棵树
-        const data = document.getElementById('tree-view').dataset.treeData;
-        if (data) {
-            const treeData = JSON.parse(data);
+        // Re-render the entire chart
+        if (treeDataCache) {
             const container = document.getElementById('tree-view');
-            container.innerHTML = '<ul class="tree-root">' + renderTreeNode(treeData) + '</ul>';
+            container.innerHTML = renderPedigreeForest(treeDataCache);
         }
     }
 
-    function renderTreeNode(nodes) {
-        // 保存树数据到 dataset 以便重新渲染
-        const container = document.getElementById('tree-view');
-        if (container && !container.dataset.treeData) {
-            container.dataset.treeData = JSON.stringify(nodes);
+    // Render multiple root trees (forest)
+    function renderPedigreeForest(roots) {
+        return '<div class="pedigree-tree">' + roots.map(r => renderPedigreeNode(r)).join('') + '</div>';
+    }
+
+    // Render a single pedigree node: family-unit + children
+    function renderPedigreeNode(node) {
+        const hasChildren = node.children && node.children.length > 0;
+        const isCollapsed = collapseState[node.member_id];
+
+        // Family unit: blood member [+ marriage link + spouse]
+        const familyUnitHtml = renderFamilyUnit(node);
+
+        // Children row
+        let childrenHtml = '';
+        if (hasChildren && !isCollapsed) {
+            const connectedClass = node.children.length > 1 ? ' connected' : '';
+            childrenHtml = `<div class="children-row${connectedClass}">`
+                + node.children.map(c => `<div class="child-branch">${renderPedigreeNode(c)}</div>`).join('')
+                + '</div>';
         }
 
-        return nodes.map(n => {
-            const genderIcon = n.gender === 'M' ? '👨' : '👩';
-            const lifespan = n.death_year ? ` (${n.birth_year}-${n.death_year})` : (n.birth_year ? ` (生于${n.birth_year})` : '');
-            const hasChildren = n.children && n.children.length > 0;
-            const isCollapsed = collapseState[n.member_id];
+        return familyUnitHtml + childrenHtml;
+    }
 
-            // 折叠按钮
-            let toggleBtn = '';
-            if (hasChildren) {
-                const symbol = isCollapsed ? '▶' : '▼';
-                toggleBtn = `<span class="tree-toggle" onclick="toggleCollapse(${n.member_id})">${symbol}</span> `;
-            } else {
-                toggleBtn = '<span class="tree-toggle tree-toggle-placeholder"></span> ';
+    // Render a family unit: [blood member card] [marriage link] [spouse card] [toggle]
+    function renderFamilyUnit(node) {
+        const memberCard = renderMemberCard(node, false);
+
+        let spouseCard = '';
+        if (node.spouse) {
+            const link = '<span class="marriage-link"> ⚬ </span>';
+            spouseCard = link + renderMemberCard(node.spouse, true);
+        }
+
+        let toggleBtn = '';
+        if (node.children && node.children.length > 0) {
+            const symbol = collapseState[node.member_id] ? '+' : '−';
+            toggleBtn = `<span class="tree-toggle" onclick="toggleCollapse(${node.member_id})">${symbol}</span>`;
+        }
+
+        return `<div class="family-unit">${memberCard}${spouseCard}${toggleBtn}</div>`;
+    }
+
+    // Render a member card with gender-based styling
+    function renderMemberCard(m, isSpouse) {
+        const genderClass = m.gender === 'M' ? 'male' : 'female';
+        const genderIcon = m.gender === 'M' ? '♂' : '♀';
+        let classes = `member-card ${genderClass}`;
+        if (isSpouse) {
+            classes += ' spouse-card';
+            if (m.is_blood_member) {
+                classes += ' blood-member';
             }
+        }
 
-            // 子节点
-            let childrenHtml = '';
-            if (hasChildren && !isCollapsed) {
-                childrenHtml = '<ul>' + renderTreeNode(n.children) + '</ul>';
-            }
+        const lifespan = m.death_year
+            ? `${m.birth_year || '?'}-${m.death_year}`
+            : (m.birth_year ? `${m.birth_year}-` : '');
 
-            return `<li>${toggleBtn}<strong>${genderIcon} ${n.name}</strong> [ID:${n.member_id}]${lifespan}</li>${childrenHtml}`;
-        }).join('');
+        const infoParts = [lifespan];
+        if (isSpouse && m.marriage_year) {
+            infoParts.push(`婚${m.marriage_year}`);
+        }
+
+        const title = isSpouse
+            ? (m.is_blood_member ? '族内成员/配偶' : '配偶')
+            : '';
+
+        return `<span class="${classes}" title="${title}">`
+            + `<span class="card-name">${genderIcon} ${m.name}</span>`
+            + (infoParts.some(p => p) ? `<span class="card-info"> ${infoParts.filter(p => p).join(' ')}</span>` : '')
+            + '</span>';
     }
 
     // ============ 权限管理 ============

@@ -76,3 +76,25 @@ CREATE TABLE collaborations (
     FOREIGN KEY (genealogy_id) REFERENCES genealogies (genealogy_id),
     UNIQUE KEY unique_collab (user_id, genealogy_id)
 );
+
+-- ============================================
+-- 7. 性能优化索引
+-- ============================================
+-- 成员表：按族谱查询成员（最高频查询）
+CREATE INDEX idx_members_genealogy ON members (genealogy_id);
+
+-- 血缘关系表：按子女/父母查询
+CREATE INDEX idx_family_links_child ON family_links (child_id);
+
+CREATE INDEX idx_family_links_parent ON family_links (parent_id);
+
+-- 婚姻关系表：按成员查询配偶
+CREATE INDEX idx_marriages_member1 ON marriages (member_id1);
+
+CREATE INDEX idx_marriages_member2 ON marriages (member_id2);
+
+-- 族谱表：按创建者查询
+CREATE INDEX idx_genealogies_creator ON genealogies (created_by);
+
+-- 协作表：按族谱查询权限列表
+CREATE INDEX idx_collaborations_genealogy ON collaborations (genealogy_id);

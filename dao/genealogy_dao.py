@@ -48,29 +48,39 @@ def insert_genealogy(conn, name, surname, created_by):
 
 
 def delete_genealogy(conn, genealogy_id):
-    """删除族谱（级联删除成员和关系）"""
-    cursor = conn.cursor()
-    # 先删关系，再删成员，最后删族谱
-    # 注意：实际项目中应该用事务
-    # 删除 family_links - 通过子查询匹配 genealogy_id
+    """删除族谱（级联删除成员和关系）
+    优化：先查一次 member_id 列表，避免重复子查询扫描
+    """
+    cursor = conn.cursor(dictionary=True)
+
+    # Step 1: 一次性获取该族谱下所有 member_id
     cursor.execute(
-        "DELETE FROM family_links WHERE child_id IN "
-        "(SELECT member_id FROM members WHERE genealogy_id = %s) "
-        "OR parent_id IN "
-        "(SELECT member_id FROM members WHERE genealogy_id = %s)",
-        (genealogy_id, genealogy_id)
-    )
-    cursor.execute(
-        "DELETE FROM marriages WHERE member_id1 IN "
-        "(SELECT member_id FROM members WHERE genealogy_id = %s) "
-        "OR member_id2 IN "
-        "(SELECT member_id FROM members WHERE genealogy_id = %s)",
-        (genealogy_id, genealogy_id)
-    )
-    cursor.execute(
-        "DELETE FROM members WHERE genealogy_id = %s",
+        "SELECT member_id FROM members WHERE genealogy_id = %s",
         (genealogy_id,)
     )
+    member_ids = [row['member_id'] for row in cursor.fetchall()]
+
+    cursor = conn.cursor()
+
+    if member_ids:
+        # Step 2: 用 IN (...) 直接删除关系，避免 4 次子查询
+        placeholders = ','.join(['%s'] * len(member_ids))
+        cursor.execute(
+            f"DELETE FROM family_links WHERE child_id IN ({placeholders}) "
+            f"OR parent_id IN ({placeholders})",
+            member_ids + member_ids
+        )
+        cursor.execute(
+            f"DELETE FROM marriages WHERE member_id1 IN ({placeholders}) "
+            f"OR member_id2 IN ({placeholders})",
+            member_ids + member_ids
+        )
+        cursor.execute(
+            "DELETE FROM members WHERE genealogy_id = %s",
+            (genealogy_id,)
+        )
+
+    # Step 3: 删除协作记录和族谱本身
     cursor.execute(
         "DELETE FROM collaborations WHERE genealogy_id = %s",
         (genealogy_id,)

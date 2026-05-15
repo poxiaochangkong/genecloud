@@ -16,43 +16,176 @@
             margin-bottom: 1rem;
         }
 
-        .tree-node {
-            padding-left: 20px;
-            border-left: 2px solid #dee2e6;
-            margin: 5px 0;
+        /* === 族谱图样式 === */
+        .pedigree-chart {
+            overflow-x: auto;
+            padding: 20px 10px;
         }
 
-        /* 树形预览折叠/展开 */
-        #tree-view ul {
-            list-style: none;
-            padding-left: 20px;
+        /* 每个家庭单元：血系成员 + 配偶 */
+        .family-unit {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
 
-        #tree-view>ul.tree-root {
-            padding-left: 0;
+        /* 成员卡片 */
+        .member-card {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            white-space: nowrap;
+            border: 1.5px solid #dee2e6;
+            background: #fff;
+            line-height: 1.5;
         }
 
-        #tree-view li {
-            margin: 4px 0;
-            line-height: 1.6;
+        .member-card.male {
+            border-color: #0d6efd;
+            background: #f0f6ff;
         }
 
+        .member-card.female {
+            border-color: #d63384;
+            background: #fff0f6;
+        }
+
+        .member-card.spouse-card {
+            border-style: dashed;
+        }
+
+        .member-card.spouse-card.blood-member {
+            border-style: solid;
+            border-color: #198754;
+            background: #f0fff4;
+        }
+
+        .member-card .card-name {
+            font-weight: 600;
+        }
+
+        .member-card .card-info {
+            font-size: 11px;
+            color: #6c757d;
+        }
+
+        /* 婚姻连接符 */
+        .marriage-link {
+            font-weight: bold;
+            color: #dc3545;
+            font-size: 14px;
+            user-select: none;
+        }
+
+        /* 树形布局：使用 flex 嵌套 */
+        .pedigree-tree {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 子女容器 */
+        .children-row {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            position: relative;
+            padding-top: 20px;
+            margin-top: 8px;
+        }
+
+        /* 连接线：从父节点到横线的竖线 */
+        .children-row::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 1px;
+            height: 20px;
+            background: #adb5bd;
+        }
+
+        /* 每个子节点分支 */
+        .child-branch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            padding-top: 20px;
+        }
+
+        /* 子节点上方的竖线（从横线到子节点） */
+        .child-branch::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            width: 1px;
+            height: 20px;
+            background: #adb5bd;
+        }
+
+        /* 横线连接多个子节点 */
+        .children-row.connected>.child-branch::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            height: 1px;
+            background: #adb5bd;
+        }
+
+        .children-row.connected>.child-branch:first-child::after {
+            left: 50%;
+            right: -10px;
+        }
+
+        .children-row.connected>.child-branch:last-child::after {
+            left: -10px;
+            right: 50%;
+        }
+
+        .children-row.connected>.child-branch:not(:first-child):not(:last-child)::after {
+            left: -10px;
+            right: -10px;
+        }
+
+        .children-row.connected>.child-branch:only-child::after {
+            display: none;
+        }
+
+        /* 折叠/展开按钮 */
         .tree-toggle {
             cursor: pointer;
             user-select: none;
             display: inline-block;
-            width: 16px;
+            width: 18px;
+            height: 18px;
             text-align: center;
-            font-size: 12px;
+            line-height: 18px;
+            font-size: 11px;
+            border-radius: 50%;
             color: #6c757d;
+            background: #e9ecef;
+            margin-left: 6px;
         }
 
         .tree-toggle:hover {
             color: #0d6efd;
+            background: #dee2e6;
         }
 
-        .tree-toggle-placeholder {
-            visibility: hidden;
+        /* 滚动条美化 */
+        .pedigree-chart::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .pedigree-chart::-webkit-scrollbar-thumb {
+            background: #ced4da;
+            border-radius: 4px;
+        }
+
+        .pedigree-chart::-webkit-scrollbar-track {
+            background: #f8f9fa;
         }
     </style>
 </head>

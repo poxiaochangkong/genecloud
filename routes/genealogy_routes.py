@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify, session
 from dao.db import get_connection
 from dao.member_dao import find_members_by_genealogy
 from dao.family_link_dao import find_parents
+from dao.marriage_dao import find_spouses
 from services.genealogy_service import (
     list_genealogies, create_genealogy, get_genealogy_detail,
     remove_genealogy
@@ -117,7 +118,7 @@ def api_genealogy_stats(genealogy_id):
 
 @genealogy_bp.route('/api/genealogies/<int:genealogy_id>/tree')
 def api_genealogy_tree(genealogy_id):
-    """获取族谱树形结构"""
+    """获取族谱树形结构（血系主干 + 配偶并排）"""
     user_id = _require_login()
     if not user_id:
         return jsonify({'error': '未登录'}), 401
@@ -133,9 +134,9 @@ def api_genealogy_tree(genealogy_id):
         # 获取所有成员
         members = find_members_by_genealogy(conn, genealogy_id)
 
-        # 获取所有父子关系
+        # Build member info map and record has_parents in a single pass
         member_map = {}
-        children_map = {}
+        has_parents = set()  # member_ids that have parent links
         for m in members:
             mid = m['member_id']
             member_map[mid] = {
@@ -144,33 +145,63 @@ def api_genealogy_tree(genealogy_id):
                 'gender': m['gender'],
                 'birth_year': m['birth_year'],
                 'death_year': m['death_year'],
+                'spouse': None,
                 'children': []
             }
-            children_map[mid] = []
 
-        # 填充父子关系（按父系挂载：只将孩子挂到父亲名下，避免通过母亲重复）
+        # Build parent-child relationships (single pass, avoid duplicate find_parents)
         for m in members:
-            parents = find_parents(conn, m['member_id'])
-            if not parents:
-                # 没有父母 → 顶层节点候选
-                children_map[None].append(m['member_id']) if None in children_map else children_map.setdefault(None, [m['member_id']])
-            else:
-                # 先找父亲；只挂到父亲名下，母亲不重复挂载以保持树形结构清晰
+            mid = m['member_id']
+            parents = find_parents(conn, mid)
+            if parents:
+                has_parents.add(mid)
+                # Attach child to father first; fall back to mother
                 father = next((p for p in parents if p['relation_type'] == 'father'), None)
                 if father and father['member_id'] in member_map:
-                    member_map[father['member_id']]['children'].append(member_map[m['member_id']])
+                    member_map[father['member_id']]['children'].append(member_map[mid])
                 else:
-                    # 没有父亲时挂到母亲名下
                     mother = next((p for p in parents if p['relation_type'] == 'mother'), None)
                     if mother and mother['member_id'] in member_map:
-                        member_map[mother['member_id']]['children'].append(member_map[m['member_id']])
+                        member_map[mother['member_id']]['children'].append(member_map[mid])
 
-        # 找根节点（没有父母的人）
+        # Attach spouse info to each member via marriages table
+        for m in members:
+            mid = m['member_id']
+            spouses = find_spouses(conn, mid)
+            if spouses:
+                # Use the first spouse as the primary spouse displayed in tree
+                s = spouses[0]
+                member_map[mid]['spouse'] = {
+                    'member_id': s['member_id'],
+                    'name': s['name'],
+                    'gender': s['gender'],
+                    'birth_year': s['birth_year'],
+                    'death_year': s['death_year'],
+                    'marriage_year': s.get('marriage_year'),
+                    'is_blood_member': s['member_id'] in has_parents
+                }
+
+        # Find roots: members without parents who have children (blood-line ancestors)
+        # Isolated spouses (married-in, no parents, no children) are excluded
         roots = []
         for m in members:
-            parents = find_parents(conn, m['member_id'])
-            if not parents:
-                roots.append(member_map[m['member_id']])
+            mid = m['member_id']
+            if mid not in has_parents:
+                node = member_map[mid]
+                if node['children']:
+                    roots.append(node)
+                else:
+                    # Also include childless root members who are NOT someone's spouse
+                    # (e.g. a single person with no relations at all)
+                    is_spouse_of_someone = False
+                    for m2 in members:
+                        if m2['member_id'] != mid:
+                            s = member_map[m2['member_id']].get('spouse')
+                            if s and s['member_id'] == mid:
+                                is_spouse_of_someone = True
+                                break
+                    if not is_spouse_of_someone:
+                        roots.append(node)
 
         return jsonify(roots), 200
     finally:

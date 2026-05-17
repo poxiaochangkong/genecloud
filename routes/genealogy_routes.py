@@ -11,7 +11,11 @@ from services.genealogy_service import (
     list_genealogies, create_genealogy, get_genealogy_detail,
     remove_genealogy
 )
-from services.stats_service import get_dashboard_stats
+from services.stats_service import (
+    get_dashboard_stats, get_avg_lifespan_by_generation,
+    get_old_males_without_spouse, get_members_born_before_gen_avg,
+    get_generation_details
+)
 from services.permission_service import list_permissions, grant, revoke
 
 genealogy_bp = Blueprint('genealogies', __name__)
@@ -258,6 +262,78 @@ def api_revoke_permission(genealogy_id, target_user_id):
     conn = get_connection()
     try:
         result, error = revoke(conn, genealogy_id, target_user_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+# ============================================
+# PPT要求的SQL查询API端点
+# ============================================
+
+@genealogy_bp.route('/api/genealogies/<int:genealogy_id>/stats/lifespan-by-gen')
+def api_lifespan_by_gen(genealogy_id):
+    """SQL查询1：统计平均寿命最长的一代人"""
+    user_id = _require_login()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = get_avg_lifespan_by_generation(conn, genealogy_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@genealogy_bp.route('/api/genealogies/<int:genealogy_id>/stats/old-males-no-spouse')
+def api_old_males_no_spouse(genealogy_id):
+    """SQL查询2：年龄超过50岁且没有配偶的男性成员"""
+    user_id = _require_login()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = get_old_males_without_spouse(conn, genealogy_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@genealogy_bp.route('/api/genealogies/<int:genealogy_id>/stats/born-before-gen-avg')
+def api_born_before_gen_avg(genealogy_id):
+    """SQL查询3：出生年份早于该辈分平均出生年份的成员"""
+    user_id = _require_login()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = get_members_born_before_gen_avg(conn, genealogy_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        return jsonify(result), 200
+    finally:
+        conn.close()
+
+
+@genealogy_bp.route('/api/genealogies/<int:genealogy_id>/stats/generation-details')
+def api_generation_details(genealogy_id):
+    """辅助查询：各代统计信息"""
+    user_id = _require_login()
+    if not user_id:
+        return jsonify({'error': '未登录'}), 401
+
+    conn = get_connection()
+    try:
+        result, error = get_generation_details(conn, genealogy_id, user_id)
         if error:
             return jsonify({'error': error}), 400
         return jsonify(result), 200

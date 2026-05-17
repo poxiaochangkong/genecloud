@@ -4,6 +4,12 @@
 """
 from dao.member_dao import find_members_by_genealogy
 from dao.genealogy_dao import find_genealogy_by_id
+from dao.stats_dao import (
+    find_avg_lifespan_by_generation,
+    find_old_males_without_spouse,
+    find_members_born_before_gen_avg,
+    find_generation_details
+)
 from services.permission_service import check_access
 
 
@@ -41,3 +47,45 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
         'avg_lifespan': round(avg_lifespan, 1),
         'members_with_lifespan': len(lifespans),
     }, None
+
+
+def get_avg_lifespan_by_generation(conn, genealogy_id, user_id):
+    """统计某家族中平均寿命最长的一代人"""
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    if not ok:
+        return None, err
+
+    result = find_avg_lifespan_by_generation(conn, genealogy_id)
+    if not result:
+        return None, "没有足够的数据计算各代平均寿命"
+    return result, None
+
+
+def get_old_males_without_spouse(conn, genealogy_id, user_id):
+    """查询所有年龄超过50岁且没有配偶的男性成员"""
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    if not ok:
+        return None, err
+
+    results = find_old_males_without_spouse(conn, genealogy_id)
+    return results, None
+
+
+def get_members_born_before_gen_avg(conn, genealogy_id, user_id):
+    """找出出生年份早于该辈分平均出生年份的所有成员"""
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    if not ok:
+        return None, err
+
+    results = find_members_born_before_gen_avg(conn, genealogy_id)
+    return results, None
+
+
+def get_generation_details(conn, genealogy_id, user_id):
+    """获取各代统计信息"""
+    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    if not ok:
+        return None, err
+
+    results = find_generation_details(conn, genealogy_id)
+    return results, None

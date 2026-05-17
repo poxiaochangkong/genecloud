@@ -3,6 +3,7 @@
 血缘关系的数据访问层（包含递归CTE查询）
 这是整个项目最核心的 DAO
 """
+from collections import deque
 
 
 def find_parents(conn, child_id):
@@ -47,14 +48,14 @@ def insert_family_link(conn, child_id, parent_id, relation_type):
 def find_all_ancestors(conn, member_id):
     """
     查询某成员的所有祖先（递归向上追溯）
-    返回从本人开始，一直到最古老祖先的完整链路
+    返回从父母（第1代）到最古老祖先的完整链路
     """
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         WITH RECURSIVE ancestors AS (
-            -- 锚点：从给定成员开始
+            -- 锚点：从给定成员开始，generation=0（本人，不纳入最终结果）
             SELECT m.member_id, m.name, m.gender, m.birth_year,
-                   fl.parent_id, fl.relation_type, 1 AS generation
+                   fl.parent_id, fl.relation_type, 0 AS generation
             FROM members m
             LEFT JOIN family_links fl ON m.member_id = fl.child_id
             WHERE m.member_id = %s
@@ -69,7 +70,7 @@ def find_all_ancestors(conn, member_id):
             LEFT JOIN family_links fl ON m.member_id = fl.child_id
             WHERE a.parent_id IS NOT NULL
         )
-        SELECT * FROM ancestors ORDER BY generation
+        SELECT * FROM ancestors WHERE generation > 0 ORDER BY generation
     """, (member_id,))
     return cursor.fetchall()
 
@@ -165,19 +166,66 @@ def find_kinship_path(conn, member_id_a, member_id_b):
 
 
 def _trace_route(conn, from_id, to_id):
-    """回溯从 from_id 到 to_id 的路径"""
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        WITH RECURSIVE route AS (
-            SELECT m.member_id, m.name, m.member_id AS current_id, 0 AS depth
-            FROM members m WHERE m.member_id = %s
-            UNION ALL
-            SELECT m.member_id, m.name, fl.parent_id, r.depth + 1
-            FROM route r
-            JOIN family_links fl ON r.current_id = fl.child_id
-            JOIN members m ON fl.parent_id = m.member_id
-            WHERE r.current_id != %s
+    """
+    回溯从 from_id 到 to_id 的最短路径（只保留路径上的成员）
+    使用 BFS 确保只返回一条不含旁系的干净链路
+    """
+    # 起点即终点，直接返回
+    if from_id == to_id:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id, name FROM members WHERE member_id = %s",
+            (from_id,)
         )
-        SELECT member_id, name, MIN(depth) AS depth FROM route GROUP BY member_id, name ORDER BY depth
-    """, (from_id, to_id))
-    return cursor.fetchall()
+        row = cursor.fetchone()
+        return [{'member_id': from_id, 'name': row['name'], 'depth': 0}] if row else []
+
+    cursor = conn.cursor(dictionary=True)
+
+    # 收集从 from_id 向上可达的所有 (member_id, parent_id) 边
+    cursor.execute("""
+        WITH RECURSIVE ancestors AS (
+            SELECT m.member_id, fl.parent_id
+            FROM members m
+            LEFT JOIN family_links fl ON m.member_id = fl.child_id
+            WHERE m.member_id = %s
+            UNION ALL
+            SELECT m.member_id, fl.parent_id
+            FROM ancestors a
+            JOIN members m ON a.parent_id = m.member_id
+            LEFT JOIN family_links fl ON m.member_id = fl.child_id
+            WHERE a.parent_id IS NOT NULL
+        )
+        SELECT DISTINCT member_id, parent_id FROM ancestors
+        WHERE parent_id IS NOT NULL
+    """, (from_id,))
+    links = cursor.fetchall()
+
+    # 构建父辈映射: member_id -> [parent_ids]
+    parent_map = {}
+    for link in links:
+        parent_map.setdefault(link['member_id'], []).append(link['parent_id'])
+
+    # BFS 寻找 from_id → to_id 的最短路径
+    queue = deque([(from_id, [from_id])])
+    visited = {from_id}
+
+    while queue:
+        current, path = queue.popleft()
+        for pid in parent_map.get(current, []):
+            if pid == to_id:
+                # 找到目标，构建完整路径并查询姓名
+                full_path = path + [pid]
+                placeholders = ','.join(['%s'] * len(full_path))
+                cursor.execute(
+                    f"SELECT member_id, name FROM members WHERE member_id IN ({placeholders})",
+                    tuple(full_path)
+                )
+                name_map = {r['member_id']: r['name'] for r in cursor.fetchall()}
+                return [{'member_id': mid, 'name': name_map.get(mid, '?'), 'depth': i}
+                        for i, mid in enumerate(full_path)]
+            if pid not in visited:
+                visited.add(pid)
+                queue.append((pid, path + [pid]))
+
+    return []  # 未找到路径

@@ -83,6 +83,27 @@
     </div>
 </div>
 
+<!-- 建立配偶关系 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>建立配偶关系</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="marriage-member1" placeholder="成员1 ID">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="marriage-member2" placeholder="成员2 ID">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" id="marriage-year" placeholder="结婚年份（可选）">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-info" onclick="addMarriage()">建立关系</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 查询祖先/后代（改进为树形展示） -->
 <div class="card mb-3">
     <div class="card-body">
@@ -277,6 +298,31 @@
         const result = await api('/api/relations/link', 'POST', data);
         if (result.error) { alert(result.error); return; }
         alert('关系建立成功');
+    }
+
+    // ============ 建立配偶关系 ============
+    async function addMarriage() {
+        const member1 = parseInt(document.getElementById('marriage-member1').value);
+        const member2 = parseInt(document.getElementById('marriage-member2').value);
+        const yearInput = document.getElementById('marriage-year').value;
+        const marriageYear = yearInput ? parseInt(yearInput) : null;
+
+        if (!member1 || !member2) {
+            alert('请输入两个成员的ID');
+            return;
+        }
+
+        const result = await api('/api/relations/marriage', 'POST', {
+            member_id1: member1,
+            member_id2: member2,
+            marriage_year: marriageYear,
+        });
+        if (result.error) { alert(result.error); return; }
+        alert('配偶关系建立成功');
+        // Clear form inputs
+        document.getElementById('marriage-member1').value = '';
+        document.getElementById('marriage-member2').value = '';
+        document.getElementById('marriage-year').value = '';
     }
 
     // ============ 祖先/后代查询（树形展示） ============

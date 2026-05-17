@@ -131,7 +131,7 @@ def api_genealogy_tree(genealogy_id):
     try:
         # 权限校验
         from services.permission_service import check_access
-        ok, err = check_access(conn, user_id, genealogy_id, 3)
+        ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
         if not ok:
             return jsonify({'error': err}), 403
 

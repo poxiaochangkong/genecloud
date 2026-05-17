@@ -86,14 +86,16 @@ def find_all_ancestors(conn, member_id):
     """
     查询某成员的所有祖先（递归向上追溯，支持婚姻推断）
     返回从父母（第1代）到最古老祖先的完整链路，包括通过婚姻关联的祖先
+    path_type: 'blood' 血缘关系, 'spouse' 配偶(嫁入/入赘)
     """
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         WITH RECURSIVE ancestors AS (
             -- 锚点：从给定成员开始，generation=0（本人，不纳入最终结果）
             SELECT m.member_id, m.name, m.gender, m.birth_year,
-                   fl.parent_id, fl.relation_type, 0 AS generation,
-                   CAST(m.member_id AS CHAR(5000)) AS visited
+                   fl.parent_id, 0 AS generation,
+                   CAST(m.member_id AS CHAR(5000)) AS visited,
+                   CAST('self' AS CHAR(10)) AS path_type
             FROM members m
             LEFT JOIN family_links fl ON m.member_id = fl.child_id
             WHERE m.member_id = %s
@@ -102,8 +104,9 @@ def find_all_ancestors(conn, member_id):
 
             -- 血缘向上：child → parent
             SELECT m.member_id, m.name, m.gender, m.birth_year,
-                   fl.parent_id, fl.relation_type, a.generation + 1,
-                   CONCAT(a.visited, ',', m.member_id)
+                   fl.parent_id, a.generation + 1,
+                   CONCAT(a.visited, ',', m.member_id),
+                   CAST('blood' AS CHAR(10)) AS path_type
             FROM ancestors a
             JOIN members m ON a.parent_id = m.member_id
             LEFT JOIN family_links fl ON m.member_id = fl.child_id
@@ -113,10 +116,11 @@ def find_all_ancestors(conn, member_id):
 
             UNION ALL
 
-            -- 婚姻横向：成员→配偶（配偶视为关系上的上一代，嫁入/入赘场景）
+            -- 婚姻横向：成员→配偶（嫁入/入赘场景）
             SELECT spouse.member_id, spouse.name, spouse.gender, spouse.birth_year,
-                   fl.parent_id, fl.relation_type, a.generation + 1,
-                   CONCAT(a.visited, ',', spouse.member_id)
+                   fl.parent_id, a.generation + 1,
+                   CONCAT(a.visited, ',', spouse.member_id),
+                   CAST('spouse' AS CHAR(10)) AS path_type
             FROM ancestors a
             JOIN marriages mar ON a.member_id = mar.member_id1 OR a.member_id = mar.member_id2
             JOIN members spouse ON spouse.member_id =
@@ -126,8 +130,14 @@ def find_all_ancestors(conn, member_id):
               AND a.generation < 50
         )
         SELECT member_id, name, gender, birth_year,
-               MIN(relation_type) AS relation_type, MIN(generation) AS generation
+               MIN(generation) AS generation,
+               CASE
+                   WHEN SUM(CASE WHEN path_type = 'blood' THEN 1 ELSE 0 END) > 0
+                   THEN 'blood'
+                   ELSE 'spouse'
+               END AS path_type
         FROM ancestors WHERE generation > 0
+            AND NOT (generation = 1 AND path_type = 'spouse')
         GROUP BY member_id, name, gender, birth_year
         ORDER BY generation
     """, (member_id,))
@@ -138,6 +148,7 @@ def find_all_descendants(conn, member_id):
     """
     查询某成员的所有后代（递归向下展开，支持婚姻推断）
     包括配偶的子女也视为自己的后代
+    path_type: 'blood' 血缘后代, 'spouse' 配偶(嫁入/入赘)
     """
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
@@ -145,7 +156,8 @@ def find_all_descendants(conn, member_id):
             -- 锚点：从给定成员开始，generation=1（本人）
             SELECT m.member_id, m.name, m.gender, m.birth_year,
                    1 AS generation,
-                   CAST(m.member_id AS CHAR(5000)) AS visited
+                   CAST(m.member_id AS CHAR(5000)) AS visited,
+                   CAST('blood' AS CHAR(10)) AS path_type
             FROM members m
             WHERE m.member_id = %s
 
@@ -154,7 +166,8 @@ def find_all_descendants(conn, member_id):
             -- 血缘向下：parent → child
             SELECT m.member_id, m.name, m.gender, m.birth_year,
                    d.generation + 1,
-                   CONCAT(d.visited, ',', m.member_id)
+                   CONCAT(d.visited, ',', m.member_id),
+                   CAST('blood' AS CHAR(10)) AS path_type
             FROM descendants d
             JOIN family_links fl ON d.member_id = fl.parent_id
             JOIN members m ON fl.child_id = m.member_id
@@ -166,7 +179,8 @@ def find_all_descendants(conn, member_id):
             -- 婚姻横向：当前后代成员的配偶也作为同代后人（嫁入/入赘场景）
             SELECT spouse.member_id, spouse.name, spouse.gender, spouse.birth_year,
                    d.generation,
-                   CONCAT(d.visited, ',', spouse.member_id)
+                   CONCAT(d.visited, ',', spouse.member_id),
+                   CAST('spouse' AS CHAR(10)) AS path_type
             FROM descendants d
             JOIN marriages mar ON d.member_id = mar.member_id1 OR d.member_id = mar.member_id2
             JOIN members spouse ON spouse.member_id =
@@ -174,7 +188,13 @@ def find_all_descendants(conn, member_id):
             WHERE FIND_IN_SET(CAST(spouse.member_id AS CHAR), d.visited) = 0
               AND d.generation < 50
         )
-        SELECT member_id, name, gender, birth_year, MIN(generation) AS generation
+        SELECT member_id, name, gender, birth_year,
+               MIN(generation) AS generation,
+               CASE
+                   WHEN SUM(CASE WHEN path_type = 'blood' THEN 1 ELSE 0 END) > 0
+                   THEN 'blood'
+                   ELSE 'spouse'
+               END AS path_type
         FROM descendants
         GROUP BY member_id, name, gender, birth_year
         ORDER BY generation

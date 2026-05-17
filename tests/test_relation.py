@@ -335,7 +335,7 @@ class TestMarriageAwareness:
         return gid, ids['grandfather'], ids['grandmother'], ids['father'], ids['mother'], ids['son'], ids['daughter']
 
     def test_mother_ancestors_include_inlaws(self, logged_in_client):
-        """Mother queries ancestors → should see husband's father/grandfather via marriage."""
+        """Mother (嫁入) queries ancestors → should see in-laws but NOT own husband."""
         result = self._create_extended_family(logged_in_client)
         if not result[0]:
             pytest.skip("Setup failed")
@@ -345,9 +345,10 @@ class TestMarriageAwareness:
         assert resp.status_code == 200
         data = resp.get_json()
         ancestor_ids = {a['member_id'] for a in data}
-        # Mother should see father-in-law (grandfather) and father (via marriage)
-        assert fid in ancestor_ids, f"Father should be in mother's ancestors: {data}"
+        # Mother should see father-in-law (grandfather)
         assert gfid in ancestor_ids, f"Grandfather should be in mother's ancestors: {data}"
+        # Mother should NOT see her own husband (spouse at gen=1 is filtered)
+        assert fid not in ancestor_ids, f"Husband should NOT be in mother's ancestors: {data}"
 
     def test_grandfather_descendants_include_daughter_in_law(self, logged_in_client):
         """Grandfather queries descendants → should see daughter-in-law (mother) via marriage."""
@@ -380,6 +381,100 @@ class TestMarriageAwareness:
         assert gfid in ancestor_ids, "Grandfather missing"
         # Grandmother should also be reachable (via grandfather's marriage)
         assert gmid in ancestor_ids, "Grandmother (inferred) missing"
+
+    def test_spouse_not_in_own_ancestors(self, logged_in_client):
+        """
+        Regression test: one's own spouse should NOT appear in ancestors.
+        Bug: ID460's spouse appeared in ancestor list.
+        """
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        # Son queries ancestors → his sister should NOT be there
+        # (no marriage for son in this setup, so test with mother instead)
+
+        # Mother (嫁入) queries ancestors → husband should NOT appear
+        resp = logged_in_client.get(f'/api/members/{mid}/ancestors')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        ancestor_ids = {a['member_id'] for a in data}
+
+        # Husband is filtered out (gen=1 spouse)
+        assert fid not in ancestor_ids, \
+            f"Husband should NOT appear in mother's ancestors: {data}"
+
+        # But grandfather (blood ancestor of husband's line) should be there
+        assert gfid in ancestor_ids, \
+            f"Grandfather should appear in mother's ancestors: {data}"
+
+    def test_blood_ancestor_has_correct_relation_type(self, logged_in_client):
+        """
+        Regression test: blood ancestors (father, grandfather) should have
+        path_type='blood', not 'spouse'. Spouses in ancestors should be 'spouse'.
+        """
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        # Son queries ancestors
+        resp = logged_in_client.get(f'/api/members/{sid}/ancestors')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        by_id = {a['member_id']: a for a in data}
+
+        # Father is a direct blood ancestor → path_type='blood'
+        assert fid in by_id
+        assert by_id[fid]['path_type'] == 'blood', \
+            f"Father should be path_type=blood, got {by_id[fid]}"
+
+        # Grandfather is a blood ancestor → path_type='blood'
+        # Note: grandfather's relation_type may be NULL if he has no parent link in the system
+        assert gfid in by_id
+        assert by_id[gfid]['path_type'] == 'blood', \
+            f"Grandfather should be path_type=blood, got {by_id[gfid]}"
+
+        # Mother (reached via marriage from father) should be 'spouse'
+        assert mid in by_id
+        assert by_id[mid]['path_type'] == 'spouse', \
+            f"Mother (via marriage) should be path_type=spouse, got {by_id[mid]}"
+
+        # Grandmother (reached via marriage from grandfather) should be 'spouse'
+        assert gmid in by_id
+        assert by_id[gmid]['path_type'] == 'spouse', \
+            f"Grandmother (via marriage) should be path_type=spouse, got {by_id[gmid]}"
+
+    def test_descendants_spouse_has_correct_path_type(self, logged_in_client):
+        """
+        Regression test: spouse (嫁入) in descendant query should have
+        path_type='spouse', not 'blood'.
+        """
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        # Grandfather queries descendants → mother should be spouse type
+        resp = logged_in_client.get(f'/api/members/{gfid}/descendants')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        by_id = {d['member_id']: d for d in data}
+
+        # Father is blood descendant
+        assert fid in by_id
+        assert by_id[fid]['path_type'] == 'blood'
+
+        # Mother is spouse (嫁入)
+        assert mid in by_id
+        assert by_id[mid]['path_type'] == 'spouse'
+
+        # Son and daughter are blood
+        assert sid in by_id
+        assert by_id[sid]['path_type'] == 'blood'
+        assert did in by_id
+        assert by_id[did]['path_type'] == 'blood'
 
     def test_father_gets_child_direct(self, logged_in_client):
         """Father queries children → should get son directly."""

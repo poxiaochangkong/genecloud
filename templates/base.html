@@ -187,6 +187,54 @@
         .pedigree-chart::-webkit-scrollbar-track {
             background: #f8f9fa;
         }
+
+        /* === 祖先/后代树形缩进视图 === */
+        .tree-indent-view {
+            border-left: 3px solid #dee2e6;
+            padding-left: 10px;
+            margin-top: 8px;
+        }
+
+        .tree-gen-row {
+            margin: 6px 0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            transition: padding-left 0.2s;
+        }
+
+        .tree-gen-badge {
+            display: inline-block;
+            background: #e9ecef;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        .tree-person {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+        }
+
+        .tree-rel-tag {
+            display: inline-block;
+            background: #ffc107;
+            color: #000;
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-right: 4px;
+            font-weight: 600;
+        }
     </style>
 </head>
 

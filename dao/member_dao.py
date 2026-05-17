@@ -14,24 +14,41 @@ def find_member_by_id(conn, member_id):
     return cursor.fetchone()
 
 
-def search_by_name(conn, genealogy_id, keyword):
-    """根据姓名模糊搜索"""
+def search_by_name(conn, genealogy_id, keyword, limit=100):
+    """根据姓名模糊搜索（限制返回数量防止前端卡死）"""
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT * FROM members WHERE genealogy_id = %s AND name LIKE %s ORDER BY name",
-        (genealogy_id, f"%{keyword}%")
+        "SELECT * FROM members WHERE genealogy_id = %s AND name LIKE %s "
+        "ORDER BY name LIMIT %s",
+        (genealogy_id, f"%{keyword}%", limit)
     )
     return cursor.fetchall()
 
 
-def find_members_by_genealogy(conn, genealogy_id):
-    """获取某族谱的全部成员"""
+def find_members_by_genealogy(conn, genealogy_id, page=None, page_size=None):
+    """获取某族谱的成员（支持分页，page从1开始）"""
     cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT * FROM members WHERE genealogy_id = %s ORDER BY birth_year",
-        (genealogy_id,)
-    )
-    return cursor.fetchall()
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        cursor.execute(
+            "SELECT * FROM members WHERE genealogy_id = %s "
+            "ORDER BY birth_year LIMIT %s OFFSET %s",
+            (genealogy_id, page_size, offset)
+        )
+        rows = cursor.fetchall()
+        # Get total count
+        cursor.execute(
+            "SELECT COUNT(*) AS total FROM members WHERE genealogy_id = %s",
+            (genealogy_id,)
+        )
+        total = cursor.fetchone()['total']
+        return rows, total
+    else:
+        cursor.execute(
+            "SELECT * FROM members WHERE genealogy_id = %s ORDER BY birth_year",
+            (genealogy_id,)
+        )
+        return cursor.fetchall(), None
 
 
 def insert_member(conn, genealogy_id, name, gender, birth_year, death_year, bio):

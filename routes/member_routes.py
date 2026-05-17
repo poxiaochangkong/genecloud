@@ -18,14 +18,23 @@ def _get_user_id():
 
 @member_bp.route('/api/genealogies/<int:genealogy_id>/members')
 def api_list_members(genealogy_id):
-    """列出族谱所有成员"""
+    """列出族谱成员（支持分页：?page=1&page_size=50）"""
     user_id = _get_user_id()
     if not user_id:
         return jsonify({'error': '未登录'}), 401
 
+    # Parse pagination params
+    page = request.args.get('page', type=int)
+    page_size = request.args.get('page_size', 50, type=int)
+    # Clamp page_size to reasonable range
+    page_size = max(1, min(200, page_size))
+
     conn = get_connection()
     try:
-        result, error = list_members(conn, genealogy_id, user_id)
+        if page is not None:
+            result, error = list_members(conn, genealogy_id, user_id, page, page_size)
+        else:
+            result, error = list_members(conn, genealogy_id, user_id)
         if error:
             return jsonify({'error': error}), 403
         return jsonify(result), 200

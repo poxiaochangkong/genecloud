@@ -17,7 +17,7 @@ def get_parents(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -31,7 +31,7 @@ def get_children(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -69,7 +69,7 @@ def add_parent_link(conn, child_id, parent_id, relation_type, user_id):
     if any(a['member_id'] == child_id for a in ancestors):
         return None, "不能将祖先设为子女，会造成循环引用"
 
-    ok, err = check_access(conn, user_id, child['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, child['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -83,7 +83,7 @@ def query_ancestors(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -97,7 +97,7 @@ def query_descendants(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -110,7 +110,7 @@ def get_spouses(conn, member_id, user_id):
     member = find_member_by_id(conn, member_id)
     if not member:
         return None, "成员不存在"
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
     spouses = find_spouses(conn, member_id)
@@ -129,7 +129,7 @@ def add_marriage(conn, member_id1, member_id2, marriage_year, user_id):
     if m1['genealogy_id'] != m2['genealogy_id']:
         return None, "两人必须在同一个族谱"
 
-    ok, err = check_access(conn, user_id, m1['genealogy_id'], 2)
+    ok, err, _ = check_access(conn, user_id, m1['genealogy_id'], 2)
     if not ok:
         return None, err
 
@@ -147,7 +147,7 @@ def remove_marriage(conn, marriage_id, user_id):
     # 检查任意一方所在的族谱权限
     m1 = find_member_by_id(conn, mar['member_id1'])
     if m1:
-        ok, err = check_access(conn, user_id, m1['genealogy_id'], 2)
+        ok, err, _ = check_access(conn, user_id, m1['genealogy_id'], 2)
         if not ok:
             return None, err
 
@@ -167,7 +167,7 @@ def query_kinship(conn, member_id_a, member_id_b, user_id):
     if a['genealogy_id'] != b['genealogy_id']:
         return None, "两人不在同一个族谱"
 
-    ok, err = check_access(conn, user_id, a['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, a['genealogy_id'], 3)
     if not ok:
         return None, err
 

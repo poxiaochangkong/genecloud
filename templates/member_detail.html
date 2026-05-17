@@ -151,9 +151,15 @@
             container.innerHTML = '<p class="text-muted">无祖先记录</p>';
             return;
         }
-        container.innerHTML = '<ul class="list-group">' + data.map(a => `
-            <li class="list-group-item">[${a.generation}代] <a href="/members/${a.member_id}">${a.name}</a></li>
-        `).join('') + '</ul>';
+        container.innerHTML = '<ul class="list-group">' + data.map(a => {
+            const label = a.path_type === 'spouse'
+                ? '<span class="badge bg-info">配偶</span>'
+                : '<span class="badge bg-success">血缘</span>';
+            return `<li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/members/${a.member_id}">${a.name}</a>
+                <span>[${a.generation}代] ${label}</span>
+            </li>`;
+        }).join('') + '</ul>';
     }
 
     async function loadSpouses() {
@@ -206,9 +212,18 @@
             container.innerHTML = '<p class="text-muted">无后代记录</p>';
             return;
         }
-        container.innerHTML = '<ul class="list-group">' + data.map(d => `
-            <li class="list-group-item">[${d.generation}代] <a href="/members/${d.member_id}">${d.name}</a></li>
-        `).join('') + '</ul>';
+        container.innerHTML = '<ul class="list-group">' + data.map(d => {
+            let label = '';
+            if (d.path_type === 'spouse') {
+                label = '<span class="badge bg-info">配偶</span>';
+            } else {
+                label = '<span class="badge bg-success">血缘</span>';
+            }
+            return `<li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/members/${d.member_id}">${d.name}</a>
+                <span>[${d.generation}代] ${label}</span>
+            </li>`;
+        }).join('') + '</ul>';
     }
 </script>
 {% endblock %}

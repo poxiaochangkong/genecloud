@@ -74,3 +74,16 @@ def find_genealogies_by_creator(conn, user_id):
         (user_id,)
     )
     return cursor.fetchall()
+
+
+def find_all_users_with_genealogy_count(conn):
+    """查询所有用户并附带族谱数量（单次 JOIN 查询，避免 N+1）"""
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.user_id, u.username, u.email, u.is_admin, u.created_at,
+               COUNT(g.genealogy_id) AS genealogy_count
+        FROM users u LEFT JOIN genealogies g ON u.user_id = g.created_by
+        GROUP BY u.user_id
+        ORDER BY u.created_at
+    """)
+    return cursor.fetchall()

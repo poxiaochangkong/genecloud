@@ -12,7 +12,7 @@
         <div class="input-group">
             <input type="text" class="form-control" id="search-keyword" placeholder="输入姓名搜索...">
             <button class="btn btn-outline-primary" onclick="doSearch()">搜索</button>
-            <button class="btn btn-outline-secondary" onclick="loadMembers()">全部</button>
+            <button class="btn btn-outline-secondary" onclick="loadMembers(1)">全部</button>
         </div>
     </div>
 </div>
@@ -54,7 +54,39 @@
 <div class="card mb-3">
     <div class="card-body">
         <h5>族谱树形预览</h5>
-        <button class="btn btn-outline-primary btn-sm mb-2" onclick="loadTree()">加载树形图</button>
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <label class="form-label mb-0">显示代数：</label>
+            <div class="input-group input-group-sm" style="width:180px;">
+                <input type="number" class="form-control" id="tree-depth" value="3" min="1" max="30" placeholder="代数">
+                <button class="btn btn-outline-secondary dropdown-toggle" type="button"
+                    data-bs-toggle="dropdown">快捷</button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='3';loadTree();return false;">3代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='5';loadTree();return false;">5代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='7';loadTree();return false;">7代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='10';loadTree();return false;">10代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='15';loadTree();return false;">15代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='20';loadTree();return false;">20代</a>
+                    </li>
+                    <li><a class="dropdown-item" href="#"
+                            onclick="document.getElementById('tree-depth').value='30';loadTree();return false;">30代</a>
+                    </li>
+                </ul>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" onclick="loadTree()">加载树形图</button>
+            <span class="text-muted" style="font-size:0.85em;">可输入1-30的任意代数</span>
+        </div>
         <div id="tree-view" class="pedigree-chart"></div>
     </div>
 </div>
@@ -83,7 +115,28 @@
     </div>
 </div>
 
-<!-- 查询祖先 -->
+<!-- 建立配偶关系 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>建立配偶关系</h5>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="marriage-member1" placeholder="成员1 ID">
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control" id="marriage-member2" placeholder="成员2 ID">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" id="marriage-year" placeholder="结婚年份（可选）">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-info" onclick="addMarriage()">建立关系</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 查询祖先/后代（改进为树形展示） -->
 <div class="card mb-3">
     <div class="card-body">
         <h5>查询祖先/后代</h5>
@@ -121,6 +174,38 @@
     </div>
 </div>
 
+<!-- ============================================ -->
+<!-- PPT要求的SQL查询：统计面板 -->
+<!-- ============================================ -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>📊 SQL统计分析</h5>
+        <div class="row g-2 mb-3">
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" onclick="queryLifespanByGen()">
+                    ① 平均寿命最长的辈分
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-warning w-100" onclick="queryOldMalesNoSpouse()">
+                    ② 50岁以上无配偶男性
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-info w-100" onclick="queryBornBeforeGenAvg()">
+                    ③ 出生早于辈分平均值
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-secondary w-100" onclick="queryGenerationDetails()">
+                    ④ 各代统计概览
+                </button>
+            </div>
+        </div>
+        <div id="sql-stats-result"></div>
+    </div>
+</div>
+
 <!-- 权限管理 -->
 <div class="card mb-3">
     <div class="card-body">
@@ -148,27 +233,42 @@
 {% block scripts %}
 <script>
     const GENEALOGY_ID = {{ genealogy_id }};
-    checkLogin();
-    loadMembers();
+    let currentPage = 1;
+    const PAGE_SIZE = 50;
+    let totalMembers = 0;
 
-    async function loadMembers() {
-        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members`);
-        renderMembers(data);
+    checkLogin();
+    loadMembers(1);
+
+    async function loadMembers(page) {
+        currentPage = page || 1;
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members?page=${currentPage}&page_size=${PAGE_SIZE}`);
+        if (data.error) { alert(data.error); return; }
+        // data = {members: [...], total: N, page: N, page_size: N}
+        const members = data.members || [];
+        totalMembers = data.total || 0;
+        renderMembers(members, data.total, data.page, data.page_size);
     }
 
     async function doSearch() {
         const keyword = document.getElementById('search-keyword').value;
-        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members/search?keyword=${keyword}`);
-        renderMembers(data);
+        if (!keyword.trim()) { loadMembers(1); return; }
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/members/search?keyword=${encodeURIComponent(keyword)}`);
+        if (data.error) { alert(data.error); return; }
+        // search returns plain array (limited to 100)
+        totalMembers = 0;
+        renderMembers(data, 0, 0, 0, true);
     }
 
-    function renderMembers(members) {
+    function renderMembers(members, total, page, pageSize, isSearch) {
         const container = document.getElementById('member-list');
         if (!Array.isArray(members) || members.length === 0) {
             container.innerHTML = '<p class="text-muted">暂无成员。</p>';
             return;
         }
-        container.innerHTML = '<table class="table table-striped"><thead><tr>'
+
+        // Build table
+        let html = '<table class="table table-striped"><thead><tr>'
             + '<th>ID</th><th>姓名</th><th>性别</th><th>出生年</th><th>死亡年</th><th>操作</th>'
             + '</tr></thead><tbody>' + members.map(m => `
             <tr>
@@ -187,6 +287,41 @@
                 </td>
             </tr>
         `).join('') + '</tbody></table>';
+
+        // Pagination controls (only for paginated mode, not search)
+        if (!isSearch && total > pageSize) {
+            const totalPages = Math.ceil(total / pageSize);
+            html += '<nav><ul class="pagination pagination-sm">';
+            // Previous
+            html += `<li class="page-item ${page <= 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="loadMembers(${page - 1});return false;">上一页</a></li>`;
+            // Page numbers (show max 7 pages around current)
+            let startPage = Math.max(1, page - 3);
+            let endPage = Math.min(totalPages, startPage + 6);
+            if (endPage - startPage < 6) startPage = Math.max(1, endPage - 6);
+            if (startPage > 1) {
+                html += `<li class="page-item"><a class="page-link" href="#" onclick="loadMembers(1);return false;">1</a></li>`;
+                if (startPage > 2) html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+            }
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<li class="page-item ${i === page ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="loadMembers(${i});return false;">${i}</a></li>`;
+            }
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                html += `<li class="page-item"><a class="page-link" href="#" onclick="loadMembers(${totalPages});return false;">${totalPages}</a></li>`;
+            }
+            // Next
+            html += `<li class="page-item ${page >= totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="loadMembers(${page + 1});return false;">下一页</a></li>`;
+            html += '</ul>';
+            html += `<span class="text-muted ms-2">共 ${total.toLocaleString()} 条，第 ${page}/${totalPages} 页</span>`;
+            html += '</nav>';
+        } else if (!isSearch && total > 0) {
+            html += `<p class="text-muted">共 ${total} 条</p>`;
+        }
+
+        container.innerHTML = html;
     }
 
     async function addMember() {
@@ -199,12 +334,11 @@
         };
         const result = await api(`/api/genealogies/${GENEALOGY_ID}/members`, 'POST', data);
         if (result.error) { alert(result.error); return; }
-        loadMembers();
+        loadMembers(currentPage);
     }
 
     // ============ 编辑 / 删除成员 ============
     async function editMember(memberId) {
-        // 获取当前成员数据
         const data = await api(`/api/members/${memberId}`);
         if (data.error) { alert(data.error); return; }
 
@@ -225,7 +359,7 @@
         };
         const result = await api(`/api/members/${memberId}`, 'PUT', payload);
         if (result.error) { alert(result.error); return; }
-        loadMembers();
+        loadMembers(currentPage);
     }
 
     async function deleteMember(memberId, btn) {
@@ -234,7 +368,7 @@
         btn.textContent = '删除中...';
         const result = await api(`/api/members/${memberId}`, 'DELETE');
         if (result.error) { alert(result.error); btn.disabled = false; btn.textContent = '删除'; return; }
-        loadMembers();
+        loadMembers(currentPage);
     }
 
     async function addLink() {
@@ -248,32 +382,106 @@
         alert('关系建立成功');
     }
 
+    // ============ 建立配偶关系 ============
+    async function addMarriage() {
+        const member1 = parseInt(document.getElementById('marriage-member1').value);
+        const member2 = parseInt(document.getElementById('marriage-member2').value);
+        const yearInput = document.getElementById('marriage-year').value;
+        const marriageYear = yearInput ? parseInt(yearInput) : null;
+
+        if (!member1 || !member2) {
+            alert('请输入两个成员的ID');
+            return;
+        }
+
+        const result = await api('/api/relations/marriage', 'POST', {
+            member_id1: member1,
+            member_id2: member2,
+            marriage_year: marriageYear,
+        });
+        if (result.error) { alert(result.error); return; }
+        alert('配偶关系建立成功');
+        // Clear form inputs
+        document.getElementById('marriage-member1').value = '';
+        document.getElementById('marriage-member2').value = '';
+        document.getElementById('marriage-year').value = '';
+    }
+
+    // ============ 祖先/后代查询（树形展示） ============
     async function queryAncestors() {
         const id = document.getElementById('query-ancestor-id').value;
         const data = await api(`/api/members/${id}/ancestors`);
-        renderTree(data, 'ancestor-result', '祖先');
+        renderTreeHierarchical(data, 'ancestor-result', '祖先', true);
     }
 
     async function queryDescendants() {
         const id = document.getElementById('query-ancestor-id').value;
         const data = await api(`/api/members/${id}/descendants`);
-        renderTree(data, 'ancestor-result', '后代');
+        renderTreeHierarchical(data, 'ancestor-result', '后代', false);
     }
 
-    function renderTree(data, containerId, label) {
+    /**
+     * 以缩进树形结构渲染祖先/后代查询结果
+     * direction: true=祖先(从本人到远祖), false=后代(从本人到末代)
+     */
+    function renderTreeHierarchical(data, containerId, label, direction) {
         const container = document.getElementById(containerId);
-        if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
         if (!Array.isArray(data) || data.length === 0) {
             container.innerHTML = '<p class="text-muted">无数据</p>';
             return;
         }
-        let html = '<h6>' + label + '列表：</h6><ul>';
+
+        // Group members by generation
+        const genMap = {};
+        let maxGen = 0;
         data.forEach(m => {
-            const indent = '  '.repeat((m.generation || 1) - 1);
-            html += `<li>${indent}[第${m.generation}代] ${m.name}
-                     (${m.gender === 'M' ? '男' : '女'}, ${m.birth_year || '?'})</li>`;
+            const gen = m.generation || 1;
+            if (!genMap[gen]) genMap[gen] = [];
+            genMap[gen].push(m);
+            if (gen > maxGen) maxGen = gen;
         });
-        html += '</ul>';
+
+        // Build HTML with indented tree structure
+        const icon = direction ? '↑' : '↓';
+        const arrow = direction ? '← 向上追溯' : '→ 向下展开';
+
+        let html = `<h6>${label}${arrow}：</h6>`;
+        html += '<div class="tree-indent-view">';
+
+        for (let gen = 1; gen <= maxGen; gen++) {
+            const members = genMap[gen] || [];
+            const indentPx = (gen - 1) * 28;
+            const genLabel = direction
+                ? `第${gen}代 ${gen === 1 ? '(本人)' : '(第' + gen + '世祖先)'}`
+                : `第${gen}代 ${gen === 1 ? '(本人)' : '(第' + gen + '世后代)'}`;
+
+            html += `<div class="tree-gen-row" style="padding-left: ${indentPx}px;">`;
+            html += `<span class="tree-gen-badge">${icon} ${genLabel}</span>`;
+
+            members.forEach(m => {
+                const genderIcon = m.gender === 'M' ? '♂' : '♀';
+                const genderClass = m.gender === 'M' ? 'text-primary' : 'text-danger';
+                const lifespan = m.death_year
+                    ? `(${m.birth_year || '?'}-${m.death_year})`
+                    : (m.birth_year ? `(${m.birth_year}-在世)` : '');
+                const relTag = m.relation_type
+                    ? `<span class="tree-rel-tag">${m.relation_type === 'father' ? '父' : '母'}</span>`
+                    : '';
+
+                html += `<span class="tree-person ${genderClass}">`
+                    + `${relTag}${genderIcon} ${m.name}`
+                    + `<small class="text-muted">${lifespan}</small>`
+                    + `</span>`;
+            });
+
+            html += '</div>';
+        }
+
+        html += '</div>';
         container.innerHTML = html;
     }
 
@@ -283,43 +491,52 @@
         const data = await api(`/api/relations/kinship?member_a=${a}&member_b=${b}`);
         const container = document.getElementById('kinship-result');
         if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
+
+        const chainANames = data.path_a.map(p => p.name);
+        const chainBNames = data.path_b.map(p => p.name).reverse().slice(1);
+
+        const arrowUp = ' → ';
+        const arrowDown = ' ← ';
+        let fullChain;
+        if (chainBNames.length === 0) {
+            fullChain = chainANames.join(arrowUp);
+        } else {
+            fullChain = chainANames.join(arrowUp) + arrowDown + chainBNames.join(arrowDown);
+        }
+
         container.innerHTML = `
             <div class="alert alert-success">
                 <strong>最近共同祖先：</strong>${data.common_ancestor} (ID: ${data.common_ancestor_id})<br>
-                <strong>A到祖先的距离：</strong>${data.path_a.length} 代<br>
-                <strong>B到祖先的距离：</strong>${data.path_b.length} 代<br>
+                <strong>A到祖先的距离：</strong>${data.path_a.length - 1} 代<br>
+                <strong>B到祖先的距离：</strong>${data.path_b.length - 1} 代<br>
                 <strong>完整链路：</strong>
-                ${data.path_a.map(p => p.name).join(' → ')}
-                ← ${data.common_ancestor} →
-                ${data.path_b.map(p => p.name).reverse().join(' → ')}
+                ${fullChain}
             </div>`;
     }
 
     // ============ 族谱图预览（支持折叠/展开） ============
-    let collapseState = {};  // member_id -> true=collapsed, false=expanded
-    let treeDataCache = null;  // cache tree data for re-render on toggle
+    let collapseState = {};
+    let treeDataCache = null;
 
     async function loadTree() {
-        const data = await api(`/api/genealogies/${GENEALOGY_ID}/tree`);
+        const depth = document.getElementById('tree-depth').value || 3;
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/tree?depth=${depth}`);
         const container = document.getElementById('tree-view');
         if (data.error) { container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`; return; }
         if (!Array.isArray(data) || data.length === 0) {
             container.innerHTML = '<p class="text-muted">暂无成员数据。</p>';
             return;
         }
-        // Initialize collapse state: default expanded
         collapseState = {};
         treeDataCache = data;
         initCollapse(data);
-
-        // Render the pedigree chart
         container.innerHTML = renderPedigreeForest(data);
     }
 
     function initCollapse(nodes) {
         nodes.forEach(n => {
             if (n.children && n.children.length > 0) {
-                collapseState[n.member_id] = false; // false = expanded
+                collapseState[n.member_id] = false;
                 initCollapse(n.children);
             }
         });
@@ -327,27 +544,21 @@
 
     function toggleCollapse(memberId) {
         collapseState[memberId] = !collapseState[memberId];
-        // Re-render the entire chart
         if (treeDataCache) {
             const container = document.getElementById('tree-view');
             container.innerHTML = renderPedigreeForest(treeDataCache);
         }
     }
 
-    // Render multiple root trees (forest)
     function renderPedigreeForest(roots) {
         return '<div class="pedigree-tree">' + roots.map(r => renderPedigreeNode(r)).join('') + '</div>';
     }
 
-    // Render a single pedigree node: family-unit + children
     function renderPedigreeNode(node) {
         const hasChildren = node.children && node.children.length > 0;
         const isCollapsed = collapseState[node.member_id];
-
-        // Family unit: blood member [+ marriage link + spouse]
         const familyUnitHtml = renderFamilyUnit(node);
 
-        // Children row
         let childrenHtml = '';
         if (hasChildren && !isCollapsed) {
             const connectedClass = node.children.length > 1 ? ' connected' : '';
@@ -359,7 +570,6 @@
         return familyUnitHtml + childrenHtml;
     }
 
-    // Render a family unit: [blood member card] [marriage link] [spouse card] [toggle]
     function renderFamilyUnit(node) {
         const memberCard = renderMemberCard(node, false);
 
@@ -370,15 +580,19 @@
         }
 
         let toggleBtn = '';
-        if (node.children && node.children.length > 0) {
+        if ((node.children && node.children.length > 0) || node.has_more_children) {
             const symbol = collapseState[node.member_id] ? '+' : '−';
             toggleBtn = `<span class="tree-toggle" onclick="toggleCollapse(${node.member_id})">${symbol}</span>`;
         }
 
-        return `<div class="family-unit">${memberCard}${spouseCard}${toggleBtn}</div>`;
+        let moreBadge = '';
+        if (node.has_more_children && (!node.children || node.children.length === 0)) {
+            moreBadge = '<span class="badge bg-secondary ms-1">...</span>';
+        }
+
+        return `<div class="family-unit">${memberCard}${spouseCard}${toggleBtn}${moreBadge}</div>`;
     }
 
-    // Render a member card with gender-based styling
     function renderMemberCard(m, isSpouse) {
         const genderClass = m.gender === 'M' ? 'male' : 'female';
         const genderIcon = m.gender === 'M' ? '♂' : '♀';
@@ -407,6 +621,181 @@
             + `<span class="card-name">${genderIcon} ${m.name}</span>`
             + (infoParts.some(p => p) ? `<span class="card-info"> ${infoParts.filter(p => p).join(' ')}</span>` : '')
             + '</span>';
+    }
+
+    // ============================================
+    // 统计查询通用分页渲染
+    // ============================================
+
+    function renderStatsPagination(page, totalPages, total, callbackName) {
+        if (totalPages <= 1) {
+            return `<p class="text-muted mt-2 mb-0">共 ${total} 条</p>`;
+        }
+        let html = '<nav class="mt-2"><ul class="pagination pagination-sm">';
+        // Previous
+        html += `<li class="page-item ${page <= 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="${callbackName}(${page - 1});return false;">上一页</a></li>`;
+        // Page numbers
+        let startPage = Math.max(1, page - 3);
+        let endPage = Math.min(totalPages, startPage + 6);
+        if (endPage - startPage < 6) startPage = Math.max(1, endPage - 6);
+        if (startPage > 1) {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="${callbackName}(1);return false;">1</a></li>`;
+            if (startPage > 2) html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<li class="page-item ${i === page ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="${callbackName}(${i});return false;">${i}</a></li>`;
+        }
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="${callbackName}(${totalPages});return false;">${totalPages}</a></li>`;
+        }
+        // Next
+        html += `<li class="page-item ${page >= totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="${callbackName}(${page + 1});return false;">下一页</a></li>`;
+        html += '</ul>';
+        html += `<span class="text-muted ms-2">共 ${total.toLocaleString()} 条，第 ${page}/${totalPages} 页</span>`;
+        html += '</nav>';
+        return html;
+    }
+
+    // ============================================
+    // PPT要求的SQL查询：前端调用
+    // ============================================
+
+    async function queryLifespanByGen() {
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/stats/lifespan-by-gen`);
+        const container = document.getElementById('sql-stats-result');
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
+        container.innerHTML = `
+            <div class="alert alert-success">
+                <h6>① 平均寿命最长的辈分</h6>
+                <table class="table table-sm table-bordered mb-0">
+                    <thead><tr><th>辈分（第几代）</th><th>人数</th><th>平均寿命（岁）</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>第 ${data.generation} 代</strong></td>
+                            <td>${data.member_count}</td>
+                            <td><strong class="text-success">${data.avg_lifespan} 岁</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    async function queryOldMalesNoSpouse(page) {
+        page = page || 1;
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/stats/old-males-no-spouse?page=${page}&page_size=${PAGE_SIZE}`);
+        const container = document.getElementById('sql-stats-result');
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
+        const rows = data.data || [];
+        if (!rows.length) {
+            container.innerHTML = `<div class="alert alert-info">没有找到年龄超过50岁且无配偶的男性成员。</div>`;
+            return;
+        }
+        const totalPages = Math.ceil(data.total / data.page_size);
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <h6>② 年龄超过50岁且无配偶的男性成员（共 ${data.total} 人）</h6>
+                <p class="text-muted mb-1"><small>年龄计算：在世 = 当前年 - 出生年，已故 = 死亡年 - 出生年（即寿命）</small></p>
+                <table class="table table-sm table-bordered mb-0">
+                    <thead><tr><th>ID</th><th>姓名</th><th>出生年</th><th>死亡年</th><th>年龄</th><th>状态</th></tr></thead>
+                    <tbody>
+                        ${rows.map(m => `
+                        <tr>
+                            <td>${m.member_id}</td>
+                            <td>${m.name}</td>
+                            <td>${m.birth_year || '-'}</td>
+                            <td>${m.death_year || '在世'}</td>
+                            <td><strong>${m.age}</strong></td>
+                            <td><span class="badge ${m.status === '在世' ? 'bg-success' : 'bg-secondary'}">${m.status}</span></td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+                ${renderStatsPagination(data.page, totalPages, data.total, 'queryOldMalesNoSpouse')}
+            </div>`;
+    }
+
+    async function queryBornBeforeGenAvg(page) {
+        page = page || 1;
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/stats/born-before-gen-avg?page=${page}&page_size=${PAGE_SIZE}`);
+        const container = document.getElementById('sql-stats-result');
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
+        const rows = data.data || [];
+        if (!rows.length) {
+            container.innerHTML = `<div class="alert alert-info">所有成员的出生年份都不低于其辈分平均值。</div>`;
+            return;
+        }
+
+        // Group by generation for better readability
+        const genGroups = {};
+        rows.forEach(m => {
+            if (!genGroups[m.generation]) genGroups[m.generation] = [];
+            genGroups[m.generation].push(m);
+        });
+
+        let tableRows = '';
+        Object.keys(genGroups).sort((a, b) => a - b).forEach(gen => {
+            genGroups[gen].forEach((m, idx) => {
+                tableRows += `<tr>
+                    ${idx === 0 ? `<td rowspan="${genGroups[gen].length}"><strong>第${gen}代</strong><br><small class="text-muted">平均: ${m.avg_birth_year}年</small></td>` : ''}
+                    <td>${m.member_id}</td>
+                    <td>${m.name}</td>
+                    <td>${m.gender === 'M' ? '♂' : '♀'}</td>
+                    <td><strong class="text-warning">${m.birth_year}</strong> <small class="text-muted">(-${(m.avg_birth_year - m.birth_year).toFixed(1)}年)</small></td>
+                </tr>`;
+            });
+        });
+
+        const totalPages = Math.ceil(data.total / data.page_size);
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <h6>③ 出生年份早于该辈分平均出生年份的成员（共 ${data.total} 人）</h6>
+                <table class="table table-sm table-bordered mb-0">
+                    <thead><tr><th>辈分</th><th>ID</th><th>姓名</th><th>性别</th><th>出生年（差值）</th></tr></thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+                ${renderStatsPagination(data.page, totalPages, data.total, 'queryBornBeforeGenAvg')}
+            </div>`;
+    }
+
+    async function queryGenerationDetails() {
+        const data = await api(`/api/genealogies/${GENEALOGY_ID}/stats/generation-details`);
+        const container = document.getElementById('sql-stats-result');
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+            return;
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+            container.innerHTML = `<div class="alert alert-info">暂无各代统计数据。</div>`;
+            return;
+        }
+        container.innerHTML = `
+            <div class="alert alert-secondary">
+                <h6>④ 各代统计概览（共 ${data.length} 代）</h6>
+                <table class="table table-sm table-bordered mb-0">
+                    <thead><tr><th>辈分</th><th>人数</th><th>平均出生年</th><th>平均寿命（岁）</th></tr></thead>
+                    <tbody>
+                        ${data.map(m => `
+                        <tr>
+                            <td><strong>第${m.generation}代</strong></td>
+                            <td>${m.member_count}</td>
+                            <td>${m.avg_birth_year}</td>
+                            <td>${m.avg_lifespan !== null ? m.avg_lifespan : '-'}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>`;
     }
 
     // ============ 权限管理 ============

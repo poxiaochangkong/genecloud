@@ -3,3 +3,6 @@
 ~$*
 __pycache__/
 **/__pycache__
+
+# Generated data files (CSV backups and exports)
+data/

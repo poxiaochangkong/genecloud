@@ -11,13 +11,15 @@ from dao.member_dao import (
 from services.permission_service import check_access
 
 
-def list_members(conn, genealogy_id, user_id):
-    """列出族谱所有成员"""
+def list_members(conn, genealogy_id, user_id, page=None, page_size=None):
+    """列出族谱成员（支持分页）"""
     ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
-        return [], err
+        return None, err
 
-    members = find_members_by_genealogy(conn, genealogy_id)
+    members, total = find_members_by_genealogy(conn, genealogy_id, page, page_size)
+    if total is not None:
+        return {'members': members, 'total': total, 'page': page, 'page_size': page_size}, None
     return members, None
 
 

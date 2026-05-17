@@ -35,7 +35,7 @@ def get_genealogy_detail(conn, genealogy_id, user_id):
     if not genealogy:
         return None, "族谱不存在"
 
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -48,7 +48,7 @@ def remove_genealogy(conn, genealogy_id, user_id):
     if not genealogy:
         return None, "族谱不存在"
 
-    ok, err = check_access(conn, user_id, genealogy_id, 2)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 2)
     if not ok:
         return None, err
 

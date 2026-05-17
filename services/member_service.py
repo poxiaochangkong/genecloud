@@ -13,7 +13,7 @@ from services.permission_service import check_access
 
 def list_members(conn, genealogy_id, user_id):
     """列出族谱所有成员"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return [], err
 
@@ -27,7 +27,7 @@ def get_member_detail(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -36,7 +36,7 @@ def get_member_detail(conn, member_id, user_id):
 
 def search_members(conn, genealogy_id, keyword, user_id):
     """模糊搜索成员"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return [], err
 
@@ -47,7 +47,7 @@ def search_members(conn, genealogy_id, keyword, user_id):
 def create_member(conn, genealogy_id, name, gender, birth_year,
                   death_year, bio, user_id):
     """创建新成员"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -83,7 +83,7 @@ def modify_member(conn, member_id, name, gender, birth_year,
     if death_year and birth_year and death_year < birth_year:
         return None, "死亡年份不能早于出生年份"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 
@@ -97,7 +97,7 @@ def remove_member(conn, member_id, user_id):
     if not member:
         return None, "成员不存在"
 
-    ok, err = check_access(conn, user_id, member['genealogy_id'], 3)
+    ok, err, _ = check_access(conn, user_id, member['genealogy_id'], 3)
     if not ok:
         return None, err
 

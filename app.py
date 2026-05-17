@@ -10,7 +10,7 @@ from routes.member_routes import member_bp
 from routes.relation_routes import relation_bp
 from dao.db import get_connection
 from services.permission_service import get_current_admin, transfer_admin, delete_user_cascade, preview_delete_user
-from dao.user_dao import find_all_users
+from dao.user_dao import find_all_users_with_genealogy_count
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -102,11 +102,8 @@ def api_admin_list_users():
         operator = cursor.fetchone()
         if not operator or not operator['is_admin']:
             return jsonify({'error': '无权限'}), 403
-        users = find_all_users(conn)
-        # 补充每个用户的族谱数
-        from dao.user_dao import count_genealogies_by_user
-        for u in users:
-            u['genealogy_count'] = count_genealogies_by_user(conn, u['user_id'])
+        # 单次 JOIN 查询获取用户列表及族谱数量，避免 N+1
+        users = find_all_users_with_genealogy_count(conn)
         return jsonify(users), 200
     finally:
         conn.close()

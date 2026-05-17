@@ -19,7 +19,7 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
     if not genealogy:
         return None, "族谱不存在"
 
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -51,7 +51,7 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
 
 def get_avg_lifespan_by_generation(conn, genealogy_id, user_id):
     """统计某家族中平均寿命最长的一代人"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -63,7 +63,7 @@ def get_avg_lifespan_by_generation(conn, genealogy_id, user_id):
 
 def get_old_males_without_spouse(conn, genealogy_id, user_id):
     """查询所有年龄超过50岁且没有配偶的男性成员"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -73,7 +73,7 @@ def get_old_males_without_spouse(conn, genealogy_id, user_id):
 
 def get_members_born_before_gen_avg(conn, genealogy_id, user_id):
     """找出出生年份早于该辈分平均出生年份的所有成员"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
@@ -83,7 +83,7 @@ def get_members_born_before_gen_avg(conn, genealogy_id, user_id):
 
 def get_generation_details(conn, genealogy_id, user_id):
     """获取各代统计信息"""
-    ok, err = check_access(conn, user_id, genealogy_id, 3)
+    ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 

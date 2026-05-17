@@ -7,8 +7,7 @@ from dao.permission_dao import (
     grant_permission, revoke_permission, find_user_by_username
 )
 from dao.user_dao import (
-    find_user_by_id, find_all_users, find_genealogies_by_creator,
-    count_genealogies_by_user, delete_user_by_id
+    find_user_by_id, find_genealogies_by_creator, delete_user_by_id
 )
 from dao.genealogy_dao import delete_genealogy
 
@@ -21,20 +20,20 @@ def check_access(conn, user_id, genealogy_id, required_level):
     """
     检查用户是否有足够权限
     required_level: 1=admin, 2=owner(含admin), 3=editor(含owner和admin)
-    返回: (ok, error_message)
+    返回: (ok, error_message, role)
     """
     role = get_user_role(conn, user_id, genealogy_id)
     if not role:
-        return False, "无权操作该族谱"
+        return False, "无权操作该族谱", None
     level = ROLE_LEVEL.get(role, 0)
     if level > required_level:
-        return False, f"权限不足，需要{required_level}级或更高权限"
-    return True, None
+        return False, f"权限不足，需要{required_level}级或更高权限", role
+    return True, None, role
 
 
 def list_permissions(conn, genealogy_id, operator_id):
     """查看某族谱的权限列表"""
-    ok, err = check_access(conn, operator_id, genealogy_id, 2)
+    ok, err, _ = check_access(conn, operator_id, genealogy_id, 2)
     if not ok:
         return None, err
     return get_genealogy_permissions(conn, genealogy_id), None
@@ -42,13 +41,12 @@ def list_permissions(conn, genealogy_id, operator_id):
 
 def grant(conn, genealogy_id, username, role, operator_id):
     """赋予权限"""
-    # 操作者必须是 owner 或 admin
-    ok, err = check_access(conn, operator_id, genealogy_id, 2)
+    # 操作者必须是 owner 或 admin，复用 check_access 返回的 role 避免重复查询
+    ok, err, operator_role = check_access(conn, operator_id, genealogy_id, 2)
     if not ok:
         return None, err
 
     # owner 不能赋予比自己更高的权限（不能赋 admin 或 owner）
-    operator_role = get_user_role(conn, operator_id, genealogy_id)
     if operator_role == 'owner' and role in ('admin', 'owner'):
         return None, "Owner 只能赋予 3级(editor) 权限"
 
@@ -65,7 +63,8 @@ def grant(conn, genealogy_id, username, role, operator_id):
 
 def revoke(conn, genealogy_id, target_user_id, operator_id):
     """撤销权限"""
-    ok, err = check_access(conn, operator_id, genealogy_id, 2)
+    # 复用 check_access 返回的 operator_role，避免重复查询
+    ok, err, operator_role = check_access(conn, operator_id, genealogy_id, 2)
     if not ok:
         return None, err
 
@@ -76,8 +75,7 @@ def revoke(conn, genealogy_id, target_user_id, operator_id):
     if target_user and target_user['is_admin']:
         return None, "不能撤销管理员的权限"
 
-    # 不能撤销比自己更高权限的人
-    operator_role = get_user_role(conn, operator_id, genealogy_id)
+    # 只需查询 target_role，operator_role 已从 check_access 获取
     target_role = get_user_role(conn, target_user_id, genealogy_id)
     if operator_role == 'owner' and target_role in ('admin', 'owner'):
         return None, "Owner 不能撤销 admin 或 owner 的权限"

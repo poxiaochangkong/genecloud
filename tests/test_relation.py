@@ -175,6 +175,226 @@ class TestQueryDescendants:
         assert resp.status_code == 401
 
 
+class TestMarriageAwareness:
+    """Test marriage-aware parent/child/kinship queries."""
+    
+    def _create_family(self, client):
+        """Helper: create genealogy, father(M), mother(F), child, marriage + father link."""
+        gid_resp = client.post('/api/genealogies', json={
+            'name': f'Marriage Test {uuid.uuid4().hex[:6]}',
+            'surname': 'TestSurname'
+        })
+        if gid_resp.status_code != 201:
+            return None, None, None, None
+        
+        gid = gid_resp.get_json()['genealogy_id']
+        
+        # Father (male)
+        f_resp = client.post(f'/api/genealogies/{gid}/members', json={
+            'name': 'Father', 'gender': 'M', 'birth_year': 1960
+        })
+        if f_resp.status_code != 201:
+            return gid, None, None, None
+        fid = f_resp.get_json()['member_id']
+        
+        # Mother (female)
+        m_resp = client.post(f'/api/genealogies/{gid}/members', json={
+            'name': 'Mother', 'gender': 'F', 'birth_year': 1962
+        })
+        if m_resp.status_code != 201:
+            return gid, fid, None, None
+        mid = m_resp.get_json()['member_id']
+        
+        # Child
+        c_resp = client.post(f'/api/genealogies/{gid}/members', json={
+            'name': 'Son', 'gender': 'M', 'birth_year': 1990
+        })
+        if c_resp.status_code != 201:
+            return gid, fid, mid, None
+        cid = c_resp.get_json()['member_id']
+        
+        # Marriage: Father ↔ Mother
+        mar_resp = client.post('/api/relations/marriage', json={
+            'member_id1': fid, 'member_id2': mid, 'marriage_year': 1985
+        })
+        assert mar_resp.status_code in [200, 201]
+        
+        # Father → Son link only (not mother)
+        link_resp = client.post('/api/relations/link', json={
+            'child_id': cid, 'parent_id': fid, 'relation_type': 'father'
+        })
+        assert link_resp.status_code in [200, 201]
+        
+        return gid, fid, mid, cid
+    
+    def test_mother_gets_child_via_spouse(self, logged_in_client):
+        """Mother queries children → should get son via marriage to father."""
+        gid, fid, mid, cid = self._create_family(logged_in_client)
+        if not cid:
+            pytest.skip("Setup failed")
+        
+        resp = logged_in_client.get(f'/api/members/{mid}/children')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # Mother should see the son (via_spouse)
+        assert len(data) >= 1, f"Mother(children) should include son via spouse, got {data}"
+        son_data = [d for d in data if d['member_id'] == cid]
+        assert len(son_data) == 1, f"Son not found in mother's children: {data}"
+        assert son_data[0]['source'] == 'via_spouse'
+    
+    def test_child_gets_mother_via_father_marriage(self, logged_in_client):
+        """Child queries parents → should get both father (direct) and mother (inferred)."""
+        gid, fid, mid, cid = self._create_family(logged_in_client)
+        if not cid:
+            pytest.skip("Setup failed")
+        
+        resp = logged_in_client.get(f'/api/members/{cid}/parents')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data) >= 2, f"Expected >=2 parents, got {data}"
+        
+        father_data = [d for d in data if d['member_id'] == fid and d['source'] == 'direct']
+        mother_data = [d for d in data if d['member_id'] == mid and d['source'] == 'inferred']
+        assert len(father_data) == 1, "Father (direct) missing"
+        assert len(mother_data) == 1, "Mother (inferred) missing"
+        assert mother_data[0]['relation_type'] == 'mother'
+    
+    def test_kinship_mother_to_son(self, logged_in_client):
+        """Kinship between mother and son (via father marriage)."""
+        gid, fid, mid, cid = self._create_family(logged_in_client)
+        if not cid:
+            pytest.skip("Setup failed")
+        
+        resp = logged_in_client.get(
+            f'/api/relations/kinship?member_a={mid}&member_b={cid}'
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None, f"Kinship should exist between mother and son, got {data}"
+        assert data.get('total_distance', -1) >= 2, "Path via father should have distance >= 2"
+    
+    def test_kinship_spouse_to_spouse(self, logged_in_client):
+        """Kinship between husband and wife (direct marriage)."""
+        gid, fid, mid, cid = self._create_family(logged_in_client)
+        if not cid:
+            pytest.skip("Setup failed")
+        
+        resp = logged_in_client.get(
+            f'/api/relations/kinship?member_a={fid}&member_b={mid}'
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None, f"Kinship should exist between spouses, got {data}"
+        assert data.get('total_distance', -1) >= 1
+    
+    def _create_extended_family(self, client):
+        """
+        Helper: create 3-generation family.
+        Grandfather(M) ←→ Grandmother(F) [married]
+        └── Father(M) ←→ Mother(F) [married]
+            └── Son(M) + Daughter(F)
+        Only father→child links exist; mother/grandmother linked only via marriage.
+        Returns 7 values: gid, gfid, gmid, fid, mid, sid, did
+        """
+        gid_resp = client.post('/api/genealogies', json={
+            'name': f'Multigen Test {uuid.uuid4().hex[:6]}',
+            'surname': 'MultiGen'
+        })
+        if gid_resp.status_code != 201:
+            return [None] * 7
+        gid = gid_resp.get_json()['genealogy_id']
+
+        ids = {}
+        for role, gender, year in [
+            ('grandfather', 'M', 1930), ('grandmother', 'F', 1932),
+            ('father', 'M', 1960), ('mother', 'F', 1962),
+            ('son', 'M', 1990), ('daughter', 'F', 1992)
+        ]:
+            resp = client.post(f'/api/genealogies/{gid}/members', json={
+                'name': role.capitalize(), 'gender': gender, 'birth_year': year
+            })
+            if resp.status_code != 201:
+                return [None] * 7
+            ids[role] = resp.get_json()['member_id']
+
+        for a, b in [('grandfather', 'grandmother'), ('father', 'mother')]:
+            mr = client.post('/api/relations/marriage', json={
+                'member_id1': ids[a], 'member_id2': ids[b],
+                'marriage_year': 1955 if 'grand' in a else 1985
+            })
+            if mr.status_code not in (200, 201):
+                return [None] * 7
+
+        for child, parent in [('father', 'grandfather'), ('son', 'father'), ('daughter', 'father')]:
+            lr = client.post('/api/relations/link', json={
+                'child_id': ids[child], 'parent_id': ids[parent], 'relation_type': 'father'
+            })
+            if lr.status_code not in (200, 201):
+                return [None] * 7
+
+        return gid, ids['grandfather'], ids['grandmother'], ids['father'], ids['mother'], ids['son'], ids['daughter']
+
+    def test_mother_ancestors_include_inlaws(self, logged_in_client):
+        """Mother queries ancestors → should see husband's father/grandfather via marriage."""
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        resp = logged_in_client.get(f'/api/members/{mid}/ancestors')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        ancestor_ids = {a['member_id'] for a in data}
+        # Mother should see father-in-law (grandfather) and father (via marriage)
+        assert fid in ancestor_ids, f"Father should be in mother's ancestors: {data}"
+        assert gfid in ancestor_ids, f"Grandfather should be in mother's ancestors: {data}"
+
+    def test_grandfather_descendants_include_daughter_in_law(self, logged_in_client):
+        """Grandfather queries descendants → should see daughter-in-law (mother) via marriage."""
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        resp = logged_in_client.get(f'/api/members/{gfid}/descendants')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        descendant_ids = {d['member_id'] for d in data}
+        assert fid in descendant_ids, f"Father should be in descendants: {data}"
+        assert mid in descendant_ids, f"Mother should be in descendants via marriage: {data}"
+        assert sid in descendant_ids, f"Son should be in descendants: {data}"
+
+    def test_son_ancestors_include_both_sides(self, logged_in_client):
+        """Son queries ancestors → should see both father's and mother's sides."""
+        result = self._create_extended_family(logged_in_client)
+        if not result[0]:
+            pytest.skip("Setup failed")
+        gid, gfid, gmid, fid, mid, sid, did = result
+
+        resp = logged_in_client.get(f'/api/members/{sid}/ancestors')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        ancestor_ids = {a['member_id'] for a in data}
+        assert fid in ancestor_ids, "Father missing"
+        assert mid in ancestor_ids, "Mother (inferred via marriage) missing"
+        assert gfid in ancestor_ids, "Grandfather missing"
+        # Grandmother should also be reachable (via grandfather's marriage)
+        assert gmid in ancestor_ids, "Grandmother (inferred) missing"
+
+    def test_father_gets_child_direct(self, logged_in_client):
+        """Father queries children → should get son directly."""
+        gid, fid, mid, cid = self._create_family(logged_in_client)
+        if not cid:
+            pytest.skip("Setup failed")
+        
+        resp = logged_in_client.get(f'/api/members/{fid}/children')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        son_data = [d for d in data if d['member_id'] == cid]
+        assert len(son_data) == 1, f"Father should find son directly: {data}"
+        assert son_data[0]['source'] == 'direct'
+
+
 class TestQueryKinship:
     """Test query kinship between two members."""
     

@@ -3,7 +3,7 @@
 统计分析的数据访问层（PPT要求的3个SQL查询）
 
 辈分计算策略（修复配偶辈分问题）：
-1. 以父系（relation_type='father'）为轴线递归计算辈分
+1. 沿血缘链（relation_type='father'或'mother'）递归计算辈分
 2. 通过 marriages 表将配偶分配到与伴侣相同的辈分
 3. 无血缘、无婚姻关系的孤立成员归为第1代
 """
@@ -12,22 +12,22 @@
 # 用法：在SQL中插入此片段，并传入 genealogy_id 参数
 _GEN_TREE_CTE = """
 WITH RECURSIVE gen_blood AS (
-    -- 第1步：沿父系轴线递归，计算血系成员辈分
-    -- 根节点 = 有子女作为父亲、但自己不是任何人的子女
+    -- 第1步：沿血缘链递归，计算血系成员辈分
+    -- 根节点 = 有子女作为父母、但自己不是任何人的子女
     SELECT m.member_id, m.name, m.gender, m.birth_year, m.death_year,
            1 AS generation
     FROM members m
     WHERE m.genealogy_id = %s
-      AND m.member_id IN (SELECT parent_id FROM family_links WHERE relation_type = 'father')
+      AND m.member_id IN (SELECT parent_id FROM family_links)
       AND m.member_id NOT IN (SELECT child_id FROM family_links WHERE child_id IS NOT NULL)
 
     UNION ALL
 
-    -- 递归：父亲的子女（含儿子、女儿）
+    -- 递归：父母的子女（含儿子、女儿）
     SELECT m.member_id, m.name, m.gender, m.birth_year, m.death_year,
            gb.generation + 1
     FROM gen_blood gb
-    JOIN family_links fl ON gb.member_id = fl.parent_id AND fl.relation_type = 'father'
+    JOIN family_links fl ON gb.member_id = fl.parent_id
     JOIN members m ON fl.child_id = m.member_id
 ),
 gen_blood_dedup AS (
@@ -94,14 +94,39 @@ def find_avg_lifespan_by_generation(conn, genealogy_id):
     return cursor.fetchone()
 
 
-def find_old_males_without_spouse(conn, genealogy_id):
+def find_old_males_without_spouse(conn, genealogy_id, page=1, page_size=50):
     """
     SQL查询2：查询所有年龄超过50岁、且没有配偶的男性成员
     - 在世：年龄 = 当前年份 - 出生年份
     - 已故：年龄 = 逝世年份 - 出生年份（即寿命）
+    支持分页，返回 (rows, total)
     """
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
+
+    where_clause = """
+          WHERE m.genealogy_id = %s
+          AND m.gender = 'M'
+          AND m.birth_year IS NOT NULL
+          AND CASE WHEN m.death_year IS NOT NULL
+                   THEN m.death_year - m.birth_year
+                   ELSE YEAR(CURDATE()) - m.birth_year
+              END > 50
+           AND m.member_id NOT IN (
+              SELECT member_id1 FROM marriages
+              WHERE member_id1 IS NOT NULL
+              UNION
+              SELECT member_id2 FROM marriages
+              WHERE member_id2 IS NOT NULL
+          )
+    """
+
+    # Count total
+    cursor.execute(f"SELECT COUNT(*) AS total FROM members m {where_clause}", (genealogy_id,))
+    total = cursor.fetchone()['total']
+
+    # Fetch page
+    offset = (page - 1) * page_size
+    cursor.execute(f"""
         SELECT m.member_id, m.name, m.gender, m.birth_year, m.death_year,
                CASE WHEN m.death_year IS NOT NULL
                     THEN m.death_year - m.birth_year
@@ -112,32 +137,43 @@ def find_old_males_without_spouse(conn, genealogy_id):
                     ELSE '在世'
                END AS status
         FROM members m
-        WHERE m.genealogy_id = %s
-          AND m.gender = 'M'
-          AND m.birth_year IS NOT NULL
-          AND CASE WHEN m.death_year IS NOT NULL
-                   THEN m.death_year - m.birth_year
-                   ELSE YEAR(CURDATE()) - m.birth_year
-              END > 50
-          AND m.member_id NOT IN (
-              SELECT member_id1 FROM marriages
-              WHERE member_id1 IS NOT NULL
-              UNION
-              SELECT member_id2 FROM marriages
-              WHERE member_id2 IS NOT NULL
-          )
+        {where_clause}
         ORDER BY m.birth_year
-    """, (genealogy_id,))
-    return cursor.fetchall()
+        LIMIT %s OFFSET %s
+    """, (genealogy_id, page_size, offset))
+    rows = cursor.fetchall()
+    return rows, total
 
 
-def find_members_born_before_gen_avg(conn, genealogy_id):
+def find_members_born_before_gen_avg(conn, genealogy_id, page=1, page_size=50):
     """
     SQL查询3：找出家族中"出生年份"早于该辈分（代）平均出生年份的所有成员
-    使用父系轴线递归CTE计算辈分（配偶与伴侣同辈），再与辈分平均值比较
+    使用递归CTE计算辈分（配偶与伴侣同辈），再与辈分平均值比较
+    支持分页，返回 (rows, total)
     """
     cursor = conn.cursor(dictionary=True)
-    sql = _GEN_TREE_CTE + """,
+    params = (genealogy_id, genealogy_id, genealogy_id)
+
+    # Count total (same CTE, just count)
+    count_sql = _GEN_TREE_CTE + """,
+        gen_avg AS (
+            SELECT generation, ROUND(AVG(birth_year), 1) AS avg_birth_year
+            FROM gen_tree
+            WHERE birth_year IS NOT NULL
+            GROUP BY generation
+        )
+        SELECT COUNT(*) AS total
+        FROM gen_tree gt
+        JOIN gen_avg ga ON gt.generation = ga.generation
+        WHERE gt.birth_year IS NOT NULL
+          AND gt.birth_year < ga.avg_birth_year
+    """
+    cursor.execute(count_sql, params)
+    total = cursor.fetchone()['total']
+
+    # Fetch page
+    offset = (page - 1) * page_size
+    data_sql = _GEN_TREE_CTE + """,
         gen_avg AS (
             SELECT generation, ROUND(AVG(birth_year), 1) AS avg_birth_year
             FROM gen_tree
@@ -152,9 +188,11 @@ def find_members_born_before_gen_avg(conn, genealogy_id):
         WHERE gt.birth_year IS NOT NULL
           AND gt.birth_year < ga.avg_birth_year
         ORDER BY gt.generation, gt.birth_year
+        LIMIT %s OFFSET %s
     """
-    cursor.execute(sql, (genealogy_id, genealogy_id, genealogy_id))
-    return cursor.fetchall()
+    cursor.execute(data_sql, params + (page_size, offset))
+    rows = cursor.fetchall()
+    return rows, total
 
 
 def find_generation_details(conn, genealogy_id):

@@ -23,7 +23,9 @@ def get_dashboard_stats(conn, genealogy_id, user_id):
     if not ok:
         return None, err
 
-    members = find_members_by_genealogy(conn, genealogy_id)
+    result = find_members_by_genealogy(conn, genealogy_id)
+    # Handle both old (list) and new (tuple) return formats
+    members = result[0] if isinstance(result, tuple) else result
 
     total = len(members)
     male_count = sum(1 for m in members if m['gender'] == 'M')
@@ -61,24 +63,24 @@ def get_avg_lifespan_by_generation(conn, genealogy_id, user_id):
     return result, None
 
 
-def get_old_males_without_spouse(conn, genealogy_id, user_id):
-    """查询所有年龄超过50岁且没有配偶的男性成员"""
+def get_old_males_without_spouse(conn, genealogy_id, user_id, page=1, page_size=50):
+    """查询所有年龄超过50岁且没有配偶的男性成员（分页）"""
     ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
-    results = find_old_males_without_spouse(conn, genealogy_id)
-    return results, None
+    results, total = find_old_males_without_spouse(conn, genealogy_id, page, page_size)
+    return {'data': results, 'total': total, 'page': page, 'page_size': page_size}, None
 
 
-def get_members_born_before_gen_avg(conn, genealogy_id, user_id):
-    """找出出生年份早于该辈分平均出生年份的所有成员"""
+def get_members_born_before_gen_avg(conn, genealogy_id, user_id, page=1, page_size=50):
+    """找出出生年份早于该辈分平均出生年份的所有成员（分页）"""
     ok, err, _ = check_access(conn, user_id, genealogy_id, 3)
     if not ok:
         return None, err
 
-    results = find_members_born_before_gen_avg(conn, genealogy_id)
-    return results, None
+    results, total = find_members_born_before_gen_avg(conn, genealogy_id, page, page_size)
+    return {'data': results, 'total': total, 'page': page, 'page_size': page_size}, None
 
 
 def get_generation_details(conn, genealogy_id, user_id):
